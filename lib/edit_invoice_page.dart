@@ -1,0 +1,611 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'database_helper.dart';
+
+class EditInvoicePage extends StatefulWidget {
+  final Map<String, dynamic> existingInvoice;
+
+  const EditInvoicePage({super.key, required this.existingInvoice});
+
+  @override
+  State<EditInvoicePage> createState() => _EditInvoicePageState();
+}
+
+class _EditInvoicePageState extends State<EditInvoicePage> {
+  // --- BRANDING COLORS ---
+  final Color royalBlue = const Color(0xFF1E40AF);
+  final Color navyBlue = const Color(0xFF1E3A8A);
+  final Color skyBlue = const Color(0xFF3B82F6);
+  final Color lightBg = const Color(0xFFF1F5F9);
+  final Color textColor = const Color(0xFF0F172A);
+
+  final TextEditingController _customerName = TextEditingController();
+  final TextEditingController _phoneNumber = TextEditingController();
+  final TextEditingController _dateController = TextEditingController();
+
+  final FocusNode _customerFocus = FocusNode();
+  final FocusNode _phoneFocus = FocusNode();
+
+  List<Map<String, dynamic>> _items = [];
+  late String _billNumber;
+  bool _isLoadingItems = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill general data
+    _billNumber = widget.existingInvoice['billNumber'] ?? "UNKNOWN";
+    _dateController.text = widget.existingInvoice['date'] ?? DateFormat('dd MMM yyyy').format(DateTime.now());
+    _customerName.text = widget.existingInvoice['customerName'] ?? "";
+    _phoneNumber.text = widget.existingInvoice['phoneNumber'] ?? "";
+
+    _loadExistingItems();
+  }
+
+  Future<void> _loadExistingItems() async {
+    try {
+      // Fetch the items belonging to this invoice from the database
+      final int invoiceId = widget.existingInvoice['id'];
+      final fetchedItems = await DatabaseHelper.instance.getInvoiceItems(invoiceId);
+
+      setState(() {
+        for (var item in fetchedItems) {
+          _items.add({
+            "name": TextEditingController(text: item['itemName']),
+            "qty": TextEditingController(text: item['qty'].toString()),
+            "price": TextEditingController(text: item['price'].toString()),
+            "isEditable": false, // Keep them locked until the user taps edit
+          });
+        }
+        // If somehow there are no items, add a blank one
+        if (_items.isEmpty) _addNewItem();
+
+        _isLoadingItems = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingItems = false);
+      if (_items.isEmpty) _addNewItem();
+    }
+  }
+
+  @override
+  void dispose() {
+    _customerName.dispose();
+    _phoneNumber.dispose();
+    _dateController.dispose();
+    _customerFocus.dispose();
+    _phoneFocus.dispose();
+    super.dispose();
+  }
+
+  void _addNewItem({String name = "", String price = "0"}) {
+    setState(() {
+      for (var item in _items) {
+        item['isEditable'] = false;
+      }
+      _items.add({
+        "name": TextEditingController(text: name),
+        "qty": TextEditingController(text: "1"),
+        "price": TextEditingController(text: price),
+        "isEditable": true,
+      });
+    });
+  }
+
+  double get _total => _items.fold(0, (sum, item) {
+    double q = double.tryParse(item['qty'].text) ?? 0;
+    double p = double.tryParse(item['price'].text) ?? 0;
+    return sum + (q * p);
+  });
+
+  // --- MODERN SUCCESS DIALOG ---
+  void _showSuccessDialog(File file, Uint8List pdfBytes) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
+                  child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 60),
+                ),
+                const SizedBox(height: 20),
+                Text("Invoice Updated!", style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: navyBlue)),
+                const SizedBox(height: 8),
+                Text("The PDF and database have been updated.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                const SizedBox(height: 25),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _dialogBtn(
+                        label: "SHARE PDF",
+                        icon: Icons.share_rounded,
+                        color: skyBlue,
+                        onTap: () => Share.shareXFiles([XFile(file.path)], text: 'Updated Invoice from Shree Shakti Electric'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _dialogBtn(
+                        label: "VIEW / PRINT",
+                        icon: Icons.picture_as_pdf_rounded,
+                        color: Colors.redAccent,
+                        onTap: () async {
+                          await Printing.layoutPdf(onLayout: (format) async => pdfBytes, name: "Invoice_$_billNumber");
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 25),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context); // Close Dialog
+                      Navigator.pop(context, true); // Go back to HistoryPage and trigger refresh
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: navyBlue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text("FINISH & EXIT", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _dialogBtn({required String label, required IconData icon, required Color color, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(15),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: color.withOpacity(0.2)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color),
+            const SizedBox(height: 5),
+            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 10)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- IMPROVED PROCESS ENGINE (EDIT MODE) ---
+  Future<void> _processInvoice() async {
+    if (_items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please add items before saving")));
+      return;
+    }
+
+    _showLoading("Regenerating PDF & Updating Database...");
+
+    try {
+      // --- STEP 0: Identify User & Load Signature ---
+      final prefs = await SharedPreferences.getInstance();
+      final String loggedInUser = (prefs.getString('userName') ?? "Suresh").toLowerCase();
+
+      String sigAssetPath = loggedInUser.contains("hiren")
+          ? 'assets/images/hiren.png'
+          : 'assets/images/suresh.png';
+
+      final Uint8List signatureData = (await rootBundle.load(sigAssetPath)).buffer.asUint8List();
+      final pw.MemoryImage signatureImage = pw.MemoryImage(signatureData);
+
+      // --- STEP 1: Data Preparation ---
+      final String finalCustomer = _customerName.text.trim().isEmpty ? "CASH CUSTOMER" : _customerName.text.trim().toUpperCase();
+      final String finalPhone = _phoneNumber.text.trim().isEmpty ? "N/A" : _phoneNumber.text.trim();
+
+      // --- STEP 2: Build PDF Document ---
+      final pdf = pw.Document();
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(35),
+          build: (pw.Context context) => [
+            _buildPdfHeader(),
+            pw.SizedBox(height: 20),
+            pw.Divider(thickness: 1, color: PdfColors.grey300),
+            pw.SizedBox(height: 15),
+            _buildPdfCustomerBox(finalCustomer, finalPhone),
+            pw.SizedBox(height: 25),
+            _buildPdfTable(),
+            _buildPdfSummary(),
+            pw.SizedBox(height: 40),
+            _buildPdfFooter(signatureImage),
+          ],
+        ),
+      );
+
+      final Uint8List bytes = await pdf.save();
+
+      // --- STEP 3: Overwrite Existing File System ---
+      final String existingPdfPath = widget.existingInvoice['pdfPath'];
+      final File file = File(existingPdfPath);
+      await file.writeAsBytes(bytes, flush: true); // Overwrites the exact file safely
+
+      // --- STEP 4: Database Update ---
+      await DatabaseHelper.instance.updateCompleteInvoice(
+          invoiceData: {
+            'id': widget.existingInvoice['id'],
+            'billNumber': _billNumber,
+            'customerName': finalCustomer,
+            'phoneNumber': finalPhone,
+            'date': _dateController.text,
+            'totalAmount': _total,
+            'pdfPath': existingPdfPath,
+          },
+          items: _items.map((item) => {
+            'invoiceId': widget.existingInvoice['id'],
+            'itemName': item['name'].text.trim().isEmpty ? "Electric Item" : item['name'].text.trim(),
+            'qty': double.tryParse(item['qty'].text) ?? 0.0,
+            'price': double.tryParse(item['price'].text) ?? 0.0,
+          }).toList()
+      );
+
+      if (mounted) Navigator.pop(context); // Close Loading Dialog
+      _showSuccessDialog(file, bytes);
+
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      debugPrint("PDF Update Error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Critical Error: $e")));
+    }
+  }
+
+  // --- PDF WIDGETS ---
+  pw.Widget _buildPdfHeader() {
+    return pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text("SHREE SHAKTI", style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+            pw.Text("ELECTRIC SERVICE", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.blue700)),
+            pw.SizedBox(height: 4),
+            pw.Text("Specialist in: All types of Electric Fitting & Maintenance", style: pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic, color: PdfColors.grey700)),
+            pw.SizedBox(height: 10),
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text("Suresh K. Lakhadiya: +91 90336 60384", style: const pw.TextStyle(fontSize: 9, color: PdfColors.black)),
+                pw.Text("Hiren S. Lakhadiya:  +91 70160 55176", style: const pw.TextStyle(fontSize: 9, color: PdfColors.black)),
+              ],
+            ),
+          ],
+        ),
+        pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Container(
+              padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: const pw.BoxDecoration(color: PdfColors.blue900, borderRadius: pw.BorderRadius.all(pw.Radius.circular(4))),
+              child: pw.Text("ESTIMATE / BILL", style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 12)),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Text("Invoice No: $_billNumber", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+            pw.Text("Date: ${_dateController.text}", style: const pw.TextStyle(fontSize: 10)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _buildPdfCustomerBox(String name, String phone) {
+    return pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.all(12),
+      decoration: const pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.all(pw.Radius.circular(8))),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text("BILL TO:", style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+          pw.SizedBox(height: 4),
+          pw.Text(name, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 2),
+          pw.Text("Phone: $phone", style: const pw.TextStyle(fontSize: 10)),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildPdfTable() {
+    return pw.TableHelper.fromTextArray(
+      headers: ['SR.', 'DESCRIPTION', 'QTY', 'RATE', 'AMOUNT'],
+      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10),
+      headerDecoration: const pw.BoxDecoration(color: PdfColors.blue900),
+      cellHeight: 25,
+      border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+      data: List.generate(_items.length, (index) {
+        final item = _items[index];
+        double q = double.tryParse(item['qty'].text) ?? 0;
+        double p = double.tryParse(item['price'].text) ?? 0;
+        return [(index + 1).toString(), item['name'].text.toUpperCase(), q.toStringAsFixed(0), p.toStringAsFixed(2), (q * p).toStringAsFixed(2)];
+      }),
+    );
+  }
+
+  pw.Widget _buildPdfSummary() {
+    return pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.end,
+      children: [
+        pw.Container(
+          width: 170,
+          decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300, width: 0.5)),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text("NET TOTAL", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(8),
+                color: PdfColors.blue50,
+                child: pw.Text("Rs. ${_total.toStringAsFixed(2)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11, color: PdfColors.blue900)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _buildPdfFooter(pw.MemoryImage sigImage) {
+    return pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: pw.CrossAxisAlignment.end,
+      children: [
+        pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text("Terms & Conditions:", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8, color: PdfColors.blue900)),
+            pw.SizedBox(height: 1),
+            pw.Text("1. Goods once sold will not be taken back.", style: const pw.TextStyle(fontSize: 7)),
+            pw.Text("2. This is a computer generated estimate.", style: const pw.TextStyle(fontSize: 7)),
+          ],
+        ),
+        pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          mainAxisSize: pw.MainAxisSize.min,
+          children: [
+            pw.Transform.translate(offset: const PdfPoint(0, -15), child: pw.Text("For, SHREE SHAKTI ELECTRIC SERVICE", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7))),
+            pw.Transform.translate(
+              offset: const PdfPoint(0, -15),
+              child: pw.Container(width: 130, height: 50, child: pw.Image(sigImage, fit: pw.BoxFit.contain)),
+            ),
+            pw.SizedBox(width: 150, child: pw.Divider(thickness: 1.0, color: PdfColors.black)),
+            pw.Transform.translate(offset: const PdfPoint(0, 5), child: pw.Text("Authorized Signatory", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
+          ],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoadingItems) {
+      return Scaffold(backgroundColor: lightBg, body: const Center(child: CircularProgressIndicator()));
+    }
+
+    bool isEditingItem = _items.any((item) => item['isEditable']);
+    bool shouldHideFooter = isEditingItem || _customerFocus.hasFocus || _phoneFocus.hasFocus;
+
+    return Scaffold(
+      backgroundColor: lightBg,
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          _buildAppBar(),
+          SliverToBoxAdapter(child: _buildCustomerCard()),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.list_alt_rounded, size: 18, color: Colors.blueGrey),
+                  const SizedBox(width: 8),
+                  Text("BILLING ITEMS", style: TextStyle(color: navyBlue, fontWeight: FontWeight.w900, letterSpacing: 1.2, fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(child: _buildQuickCatalogHeader()),
+          SliverPadding(
+            padding: const EdgeInsets.only(bottom: 20),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate((context, index) => _buildItemTile(index), childCount: _items.length),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 180)),
+        ],
+      ),
+      bottomSheet: shouldHideFooter ? null : _buildModernFooter(),
+    );
+  }
+
+  Widget _buildAppBar() {
+    return SliverAppBar(
+      expandedHeight: 140.0,
+      pinned: true,
+      backgroundColor: royalBlue,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+        onPressed: () => Navigator.pop(context),
+      ),
+      flexibleSpace: FlexibleSpaceBar(
+        centerTitle: true,
+        title: const Text("EDIT INVOICE", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white, letterSpacing: 2)),
+        background: Container(
+          decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [royalBlue, navyBlue])),
+          child: Opacity(opacity: 0.1, child: const Icon(Icons.edit_document, size: 120, color: Colors.white)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomerCard() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20)]
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center, // Keep items aligned
+            children: [
+              Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: skyBlue.withOpacity(0.1), shape: BoxShape.circle),
+                  child: Icon(Icons.person, color: skyBlue, size: 20)
+              ),
+              const SizedBox(width: 15),
+
+              // --- CUSTOMER NAME INPUT WITH LIMIT ---
+              Expanded(
+                child: TextField(
+                  controller: _customerName,
+                  focusNode: _customerFocus,
+                  textCapitalization: TextCapitalization.characters,
+                  maxLength: 20, // Limits characters to prevent overlapping
+                  maxLines: 1,   // Ensures it stays on one line
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                  decoration: InputDecoration(
+                    hintText: "Customer Name",
+                    border: InputBorder.none,
+                    counterText: "", // Hides the character counter for a clean look
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 10), // Small gap
+
+              // --- BILL NUMBER (Now stays visible) ---
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: lightBg,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                    _billNumber,
+                    style: TextStyle(color: royalBlue, fontWeight: FontWeight.bold, fontSize: 12)
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 40),
+          Row(
+            children: [
+              Expanded(child: _miniInput(Icons.phone_android, _phoneNumber, "Mobile No.", focus: _phoneFocus, isNum: true)),
+              Container(width: 1, height: 25, color: Colors.grey[200], margin: const EdgeInsets.symmetric(horizontal: 10)),
+              Expanded(child: InkWell(onTap: () => _selectDate(context), child: AbsorbPointer(child: _miniInput(Icons.calendar_month, _dateController, "Date")))),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemTile(int index) {
+    bool isEdit = _items[index]['isEditable'];
+    double qty = double.tryParse(_items[index]['qty'].text) ?? 0;
+    double price = double.tryParse(_items[index]['price'].text) ?? 0;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: isEdit ? royalBlue : Colors.transparent, width: 2)),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              CircleAvatar(backgroundColor: lightBg, radius: 15, child: Text("${index + 1}", style: TextStyle(fontSize: 12, color: royalBlue))),
+              const SizedBox(width: 12),
+              Expanded(child: TextField(controller: _items[index]['name'], enabled: isEdit, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(hintText: "Item name...", border: InputBorder.none))),
+              IconButton(onPressed: () => setState(() => _items[index]['isEditable'] = !isEdit), icon: Icon(isEdit ? Icons.check_circle : Icons.edit_rounded, color: isEdit ? Colors.green : royalBlue)),
+              if (!isEdit) IconButton(onPressed: () => setState(() => _items.removeAt(index)), icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent)),
+            ],
+          ),
+          if (isEdit) ...[
+            const Divider(),
+            Row(children: [_editBox("QTY", _items[index]['qty']), _editBox("RATE (₹)", _items[index]['price']), const Spacer(), Text("₹${(qty * price).toStringAsFixed(0)}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: royalBlue))])
+          ]
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernFooter() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 34),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(top: Radius.circular(35)), boxShadow: [BoxShadow(color: royalBlue.withOpacity(0.1), blurRadius: 40)]),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("TOTAL PAYABLE", style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: 11)), Text("₹${_total.toStringAsFixed(2)}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 32, color: navyBlue))]),
+            const SizedBox(height: 20),
+            Row(children: [
+              Expanded(child: OutlinedButton.icon(onPressed: () => _addNewItem(), icon: const Icon(Icons.add), label: const Text("ADD ITEM"), style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)), side: BorderSide(color: royalBlue, width: 2), foregroundColor: royalBlue))),
+              const SizedBox(width: 12),
+              Expanded(child: ElevatedButton.icon(onPressed: _items.isEmpty ? null : _processInvoice, icon: const Icon(Icons.update_rounded), label: const Text("UPDATE & SAVE"), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)), elevation: 5))),
+            ])
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _miniInput(IconData icon, TextEditingController ctrl, String hint, {FocusNode? focus, bool isNum = false}) {
+    return Row(children: [Icon(icon, size: 18, color: skyBlue), const SizedBox(width: 10), Expanded(child: TextField(controller: ctrl, focusNode: focus, keyboardType: isNum ? TextInputType.number : TextInputType.text, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textColor), decoration: InputDecoration(hintText: hint, border: InputBorder.none, hintStyle: TextStyle(color: Colors.grey[400]))))]);
+  }
+
+  Widget _editBox(String label, TextEditingController ctrl) {
+    return Container(width: 80, margin: const EdgeInsets.only(right: 15), child: TextField(controller: ctrl, keyboardType: TextInputType.number, onChanged: (v) => setState(() {}), style: const TextStyle(fontWeight: FontWeight.bold), decoration: InputDecoration(labelText: label, labelStyle: TextStyle(fontSize: 10, color: skyBlue))));
+  }
+
+  Widget _buildQuickCatalogHeader() {
+    final suggestions = [{"n": "Switch", "p": "45"}, {"n": "Socket", "p": "85"}, {"n": "LED 9W", "p": "120"}, {"n": "1.5mm Wire", "p": "1200"}];
+    return SizedBox(height: 50, child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.only(left: 16), itemCount: suggestions.length, itemBuilder: (context, i) => Padding(padding: const EdgeInsets.only(right: 8), child: ActionChip(label: Text(suggestions[i]['n']!), onPressed: () => _addNewItem(name: suggestions[i]['n']!, price: suggestions[i]['p']!), backgroundColor: Colors.white, labelStyle: TextStyle(color: royalBlue, fontWeight: FontWeight.bold), side: BorderSide(color: royalBlue.withOpacity(0.2))))));
+  }
+
+  void _showLoading(String message) {
+    showDialog(context: context, barrierDismissible: false, builder: (context) => AlertDialog(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), content: Column(mainAxisSize: MainAxisSize.min, children: [const SizedBox(height: 10), CircularProgressIndicator(color: royalBlue), const SizedBox(height: 25), Text(message, style: TextStyle(fontWeight: FontWeight.bold, color: navyBlue))])));
+  }
+
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime(2030), builder: (context, child) => Theme(data: Theme.of(context).copyWith(colorScheme: ColorScheme.light(primary: royalBlue)), child: child!));
+    if (picked != null) setState(() => _dateController.text = DateFormat('dd MMM yyyy').format(picked));
+  }
+}
