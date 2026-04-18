@@ -10,6 +10,8 @@ import 'package:share_plus/share_plus.dart';
 import 'database_helper.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:ui';
+import 'package:flutter/services.dart';
 
 class CreateInvoicePage extends StatefulWidget
 {
@@ -58,6 +60,8 @@ class _CreateInvoicePageState extends State<CreateInvoicePage>
     super.dispose();
   }
 
+
+
   void _addNewItem({String name = "", String price = "0"})
 {
     setState(()
@@ -86,6 +90,188 @@ class _CreateInvoicePageState extends State<CreateInvoicePage>
     return sum + (q * p);
   }
 );
+
+  void _showBestExitAlert() {
+    // 1. Pro Detail: Unfocus and trigger a "Warning" Haptic vibration
+    FocusManager.instance.primaryFocus?.unfocus();
+    HapticFeedback.heavyImpact();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      // Allows for a smoother bounce animation
+      transitionAnimationController: AnimationController(
+        vsync: Navigator.of(context),
+        duration: const Duration(milliseconds: 400),
+      )..forward(),
+      builder: (context) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.95), // Slight transparency
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(44)),
+            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 40,
+                offset: const Offset(0, -10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 2. Pro Detail: Thicker, more tactile drag handle
+              Container(
+                width: 48,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(100),
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // --- NEUMORPHIC DANGER ICON ---
+              // Designed to look like a high-end system alert
+              TweenAnimationBuilder<double>(
+                duration: const Duration(milliseconds: 600),
+                tween: Tween(begin: 0.0, end: 1.0),
+                builder: (context, value, child) {
+                  return Transform.scale(scale: value, child: child);
+                },
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 110,
+                      height: 110,
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.08),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    Container(
+                      width: 85,
+                      height: 85,
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Colors.redAccent.shade400, Colors.red.shade900],
+                        ),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.redAccent.withOpacity(0.4),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          )
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.priority_high_rounded, // Sharper, more "Pro" icon
+                        color: Colors.white,
+                        size: 38,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 28),
+
+              // --- HEADER SECTION ---
+              const Text(
+                "Discard Changes?",
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0F172A), // Deep Navy Slate
+                  letterSpacing: -1.0,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  "Leaving this invoice will permanently delete all added items. This action cannot be undone.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF64748B), // Soft Slate
+                    fontSize: 15,
+                    height: 1.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 36),
+
+              // --- PRO ACTION BUTTONS ---
+              Row(
+                children: [
+                  // Secondary: Keep Editing
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF8FAFC),
+                        foregroundColor: const Color(0xFF475569),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(color: Colors.grey.shade200),
+                        ),
+                      ),
+                      child: const Text(
+                        "RESUME",
+                        style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Primary: Discard (High-End Danger Style)
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.pop(context);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F172A), // Luxury Dark Navy
+                        foregroundColor: Colors.white,
+                        elevation: 4,
+                        shadowColor: Colors.black.withOpacity(0.3),
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                      child: const Text(
+                        "EXIT",
+                        style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   // --- MODERN SUCCESS DIALOG ---
   void _showSuccessDialog(File file, Uint8List pdfBytes)
@@ -437,41 +623,61 @@ class _CreateInvoicePageState extends State<CreateInvoicePage>
   }
 
   @override
-  Widget build(BuildContext context)
-{
+  Widget build(BuildContext context) {
     bool isEditingItem = _items.any((item) => item['isEditable']);
     bool shouldHideFooter = isEditingItem || _customerFocus.hasFocus || _phoneFocus.hasFocus;
 
-    return Scaffold(
-      backgroundColor: lightBg,
- body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
- slivers: [
-          _buildAppBar(),
- SliverToBoxAdapter(child: _buildCustomerCard()),
- SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
- child: Row(
-                children: [
-                  const Icon(Icons.list_alt_rounded, size: 18, color: Colors.blueGrey),
- const SizedBox(width: 8),
- Text("BILLING ITEMS", style: TextStyle(color: navyBlue, fontWeight: FontWeight.w900, letterSpacing: 1.2, fontSize: 12)),
-                ],
+    return PopScope(
+      canPop: false, // Prevents automatic closing
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+
+        // Logic: If list is not empty, ask. If empty, just leave.
+        if (_items.isNotEmpty || _customerName.text.isNotEmpty) {
+          _showBestExitAlert();
+        } else {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: lightBg,
+        body: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            _buildAppBar(),
+            SliverToBoxAdapter(child: _buildCustomerCard()),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.list_alt_rounded, size: 18, color: Colors.blueGrey),
+                    const SizedBox(width: 8),
+                    Text("BILLING ITEMS",
+                        style: TextStyle(
+                            color: navyBlue,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                            fontSize: 12)),
+                  ],
+                ),
               ),
             ),
-          ),
- SliverToBoxAdapter(child: _buildQuickCatalogHeader()),
- SliverPadding(
-            padding: const EdgeInsets.only(bottom: 20),
- sliver: SliverList(
-              delegate: SliverChildBuilderDelegate((context, index) => _buildItemTile(index), childCount: _items.length),
+            SliverToBoxAdapter(child: _buildQuickCatalogHeader()),
+            SliverPadding(
+              padding: const EdgeInsets.only(bottom: 20),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                      (context, index) => _buildItemTile(index),
+                  childCount: _items.length,
+                ),
+              ),
             ),
-          ),
- const SliverToBoxAdapter(child: SizedBox(height: 180)),
-        ],
+            const SliverToBoxAdapter(child: SizedBox(height: 180)),
+          ],
+        ),
+        bottomSheet: shouldHideFooter ? null : _buildModernFooter(),
       ),
- bottomSheet: shouldHideFooter ? null : _buildModernFooter(),
     );
   }
 
