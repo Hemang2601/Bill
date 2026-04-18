@@ -9,6 +9,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'database_helper.dart';
+import 'dart:ui'; // For ImageFilter.blur
+import 'package:flutter/services.dart'; // For HapticFeedback
 
 class EditInvoicePage extends StatefulWidget {
   final Map<String, dynamic> existingInvoice;
@@ -84,6 +86,106 @@ class _EditInvoicePageState extends State<EditInvoicePage> {
     _customerFocus.dispose();
     _phoneFocus.dispose();
     super.dispose();
+  }
+
+  void _showBestExitAlert() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    HapticFeedback.heavyImpact(); // Physical vibration for "Danger" awareness
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(44)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 50,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 35),
+
+              // --- PRO LAYERED ICON ---
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(width: 100, height: 100, decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle)),
+                  Container(width: 75, height: 75, decoration: BoxDecoration(color: Colors.red.shade100, shape: BoxShape.circle)),
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                    child: const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 38),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 30),
+
+              const Text(
+                "Discard Edits?",
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Color(0xFF1A1A1A), letterSpacing: -0.8),
+              ),
+              const SizedBox(height: 15),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  "You have modified this invoice. Leaving now will cancel all current edits and keep the old data.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 15, height: 1.5),
+                ),
+              ),
+              const SizedBox(height: 40),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF1F5F9),
+                        foregroundColor: const Color(0xFF334155),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.grey.shade200)),
+                      ),
+                      child: const Text("RESUME", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1.1)),
+                    ),
+                  ),
+                  const SizedBox(width: 15),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context); // Close Alert
+                        Navigator.pop(context); // Exit Page
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F172A), // Pro Navy
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      ),
+                      child: const Text("EXIT", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1.1)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _addNewItem({String name = "", String price = "0"}) {
@@ -412,42 +514,74 @@ class _EditInvoicePageState extends State<EditInvoicePage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoadingItems) {
-      return Scaffold(backgroundColor: lightBg, body: const Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        backgroundColor: lightBg,
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
 
+    // Check state for footer visibility
     bool isEditingItem = _items.any((item) => item['isEditable']);
     bool shouldHideFooter = isEditingItem || _customerFocus.hasFocus || _phoneFocus.hasFocus;
 
-    return Scaffold(
-      backgroundColor: lightBg,
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          _buildAppBar(),
-          SliverToBoxAdapter(child: _buildCustomerCard()),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Row(
-                children: [
-                  const Icon(Icons.list_alt_rounded, size: 18, color: Colors.blueGrey),
-                  const SizedBox(width: 8),
-                  Text("BILLING ITEMS", style: TextStyle(color: navyBlue, fontWeight: FontWeight.w900, letterSpacing: 1.2, fontSize: 12)),
-                ],
+    // Professional Logic: Check if there is any data to protect
+    bool hasData = _items.isNotEmpty || _customerName.text.isNotEmpty;
+
+    return PopScope(
+      canPop: false, // Stop immediate exit
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+
+        // Trigger the professional red alert if data exists
+        if (hasData) {
+          _showBestExitAlert();
+        } else {
+          Navigator.pop(context); // Just exit if the invoice is empty
+        }
+      },
+      child: Scaffold(
+        backgroundColor: lightBg,
+        body: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            _buildAppBar(),
+            SliverToBoxAdapter(child: _buildCustomerCard()),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.list_alt_rounded, size: 18, color: Colors.blueGrey),
+                    const SizedBox(width: 8),
+                    Text(
+                      "BILLING ITEMS",
+                      style: TextStyle(
+                        color: navyBlue,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.2,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          SliverToBoxAdapter(child: _buildQuickCatalogHeader()),
-          SliverPadding(
-            padding: const EdgeInsets.only(bottom: 20),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate((context, index) => _buildItemTile(index), childCount: _items.length),
+            SliverToBoxAdapter(child: _buildQuickCatalogHeader()),
+            SliverPadding(
+              padding: const EdgeInsets.only(bottom: 20),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                      (context, index) => _buildItemTile(index),
+                  childCount: _items.length,
+                ),
+              ),
             ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 180)),
-        ],
+            // Provides space so the list doesn't get hidden by the footer
+            const SliverToBoxAdapter(child: SizedBox(height: 180)),
+          ],
+        ),
+        bottomSheet: shouldHideFooter ? null : _buildModernFooter(),
       ),
-      bottomSheet: shouldHideFooter ? null : _buildModernFooter(),
     );
   }
 
