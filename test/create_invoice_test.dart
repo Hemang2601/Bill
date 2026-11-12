@@ -518,7 +518,7 @@ void main() {
     );
 
     testWidgets(
-      '14. Entering item name, qty, and rate per unit and submitting or tapping right dismiss option unfocuses keyboard',
+      '14. Entering item name, qty, and rate per unit and submitting unfocuses keyboard and adds item without keyboard icons in fields',
       (WidgetTester tester) async {
         tester.view.physicalSize = const Size(800, 1000);
         tester.view.devicePixelRatio = 1.0;
@@ -553,13 +553,9 @@ void main() {
         await tester.enterText(priceField, '450');
         await tester.pump();
 
-        // Right dismiss icon exists on the field
+        // Keyboard hide icons are removed from the input fields as requested
         final dismissIcons = find.byIcon(Icons.keyboard_hide_rounded);
-        expect(dismissIcons, findsWidgets);
-
-        // Tap the right dismiss icon on rate per unit to unfocus
-        await tester.tap(dismissIcons.last);
-        await tester.pumpAndSettle();
+        expect(dismissIcons, findsNothing);
 
         // Tap price field and submit via keyboard done action
         await tester.tap(priceField);

@@ -380,20 +380,6 @@ class _InvoiceItemsStepState extends State<InvoiceItemsStep> {
                         prefixIcon: Icons.electric_bolt_rounded,
                         textCapitalization: TextCapitalization.words,
                         textInputAction: TextInputAction.next,
-                        suffix: IconButton(
-                          icon: const Icon(
-                            Icons.keyboard_hide_rounded,
-                            size: 20,
-                            color: AppColors.textSecondary,
-                          ),
-                          tooltip: "Dismiss Keyboard",
-                          onPressed: () {
-                            FocusScope.of(context).unfocus();
-                            SystemChannels.textInput.invokeMethod(
-                              'TextInput.hide',
-                            );
-                          },
-                        ),
                         onChanged: (_) => setState(() => _itemError = null),
                         onSubmitted: (_) => _qtyFocus.requestFocus(),
                       ),
@@ -417,20 +403,6 @@ class _InvoiceItemsStepState extends State<InvoiceItemsStep> {
                                     decimal: true,
                                   ),
                               textInputAction: TextInputAction.next,
-                              suffix: IconButton(
-                                icon: const Icon(
-                                  Icons.keyboard_hide_rounded,
-                                  size: 20,
-                                  color: AppColors.textSecondary,
-                                ),
-                                tooltip: "Dismiss Keyboard",
-                                onPressed: () {
-                                  FocusScope.of(context).unfocus();
-                                  SystemChannels.textInput.invokeMethod(
-                                    'TextInput.hide',
-                                  );
-                                },
-                              ),
                               onChanged: (_) => setState(() {}),
                               onSubmitted: (_) => _priceFocus.requestFocus(),
                             ),
@@ -449,20 +421,6 @@ class _InvoiceItemsStepState extends State<InvoiceItemsStep> {
                                     decimal: true,
                                   ),
                               textInputAction: TextInputAction.done,
-                              suffix: IconButton(
-                                icon: const Icon(
-                                  Icons.keyboard_hide_rounded,
-                                  size: 20,
-                                  color: AppColors.primary,
-                                ),
-                                tooltip: "Dismiss Keyboard",
-                                onPressed: () {
-                                  FocusScope.of(context).unfocus();
-                                  SystemChannels.textInput.invokeMethod(
-                                    'TextInput.hide',
-                                  );
-                                },
-                              ),
                               onChanged: (_) => setState(() {}),
                               onSubmitted: (_) {
                                 FocusScope.of(context).unfocus();
