@@ -263,8 +263,8 @@ void main() {
 
         expect(find.text('SHREE SHAKTI ELECTRIC'), findsOneWidget);
         expect(find.text('BILLING & ESTIMATION SUITE'), findsOneWidget);
-        expect(find.text('Create New Bill'), findsOneWidget);
-        expect(find.text('View All Bills'), findsOneWidget);
+        expect(find.text('Create Invoice'), findsOneWidget);
+        expect(find.text('Invoice History'), findsOneWidget);
 
         addTearDown(() {
           tester.view.resetPhysicalSize();

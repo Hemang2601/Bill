@@ -170,9 +170,8 @@ class _CustomerDetailsStepState extends State<CustomerDetailsStep> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const AppSectionHeader(
-                        title: "Recipient Information",
-                        subtitle:
-                            "Printed on invoice header for commercial billing",
+                        title: "Client Details",
+                        subtitle: "Buyer and firm contact information",
                       ),
                       AppSpacing.gapVl,
 

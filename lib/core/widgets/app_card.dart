@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_spacing.dart';
@@ -14,6 +15,7 @@ class AppCard extends StatefulWidget {
   final Color? borderColor;
   final BorderRadius? borderRadius;
   final bool enableHover;
+  final bool heroAccent;
 
   const AppCard({
     super.key,
@@ -25,6 +27,7 @@ class AppCard extends StatefulWidget {
     this.borderColor,
     this.borderRadius,
     this.enableHover = true,
+    this.heroAccent = false,
   });
 
   @override
@@ -33,41 +36,72 @@ class AppCard extends StatefulWidget {
 
 class _AppCardState extends State<AppCard> {
   bool _isHovered = false;
+  bool _isPressed = false;
 
   @override
   Widget build(BuildContext context) {
     final borderRadius = widget.borderRadius ?? AppRadius.l;
     final isClickable = widget.onTap != null;
 
-    final cardWidget = AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
+    final cardContent = Stack(
+      children: [
+        Padding(padding: widget.padding, child: widget.child),
+        if (widget.heroAccent)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            child: ClipRRect(
+              borderRadius: BorderRadius.only(
+                topLeft: borderRadius.topLeft,
+                topRight: borderRadius.topRight,
+              ),
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: AppColors.brandGradient,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+
+    final cardWidget = AnimatedScale(
+      scale: _isPressed && isClickable ? 0.98 : 1.0,
+      duration: AppMotion.fast,
       curve: Curves.easeOutCubic,
-      margin: widget.margin,
-      decoration: BoxDecoration(
-        color: widget.backgroundColor ?? AppColors.surface,
-        borderRadius: borderRadius,
-        border: Border.all(
-          color:
-              widget.borderColor ??
-              (_isHovered && isClickable
-                  ? AppColors.primary.withAlpha(120)
-                  : AppColors.border),
-          width: 1.0,
-        ),
-        boxShadow: _isHovered && widget.enableHover
-            ? AppShadows.hover
-            : AppShadows.card,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: borderRadius,
-        child: InkWell(
-          onTap: widget.onTap,
+      child: AnimatedContainer(
+        duration: AppMotion.fast,
+        curve: Curves.easeOutCubic,
+        margin: widget.margin,
+        decoration: BoxDecoration(
+          color: widget.backgroundColor ?? AppColors.surface,
           borderRadius: borderRadius,
-          hoverColor: Colors.transparent,
-          splashColor: AppColors.primarySoft.withAlpha(100),
-          highlightColor: Colors.transparent,
-          child: Padding(padding: widget.padding, child: widget.child),
+          border: Border.all(
+            color:
+                widget.borderColor ??
+                (_isHovered && isClickable
+                    ? AppColors.primary.withAlpha(120)
+                    : AppColors.border),
+            width: 1.0,
+          ),
+          boxShadow: _isHovered && widget.enableHover
+              ? AppShadows.hover
+              : AppShadows.card,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: borderRadius,
+          child: InkWell(
+            onTap: widget.onTap,
+            onHighlightChanged: (v) => setState(() => _isPressed = v),
+            borderRadius: borderRadius,
+            hoverColor: Colors.transparent,
+            splashColor: AppColors.primarySoft.withAlpha(100),
+            highlightColor: Colors.transparent,
+            child: cardContent,
+          ),
         ),
       ),
     );

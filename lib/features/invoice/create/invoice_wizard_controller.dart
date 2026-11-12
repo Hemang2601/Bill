@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../database_helper.dart';
 
-/// Item data model for the invoice creation wizard
+/// Item data model for the invoice creation & editing wizard
 class WizardItem {
   String name;
   double qty;
@@ -20,8 +20,13 @@ class WizardItem {
   };
 }
 
-/// Central controller managing the state and steps of the Invoice Creation Wizard
+/// Central controller managing the state and steps of the Invoice Wizard
+/// Supports both new bill creation and existing bill modification.
 class InvoiceWizardController extends ChangeNotifier {
+  final bool isEdit;
+  final int? existingInvoiceId;
+  final String? existingPdfPath;
+
   int _currentStep = 0;
   String _billNumber = "";
   String _date = "";
@@ -30,12 +35,34 @@ class InvoiceWizardController extends ChangeNotifier {
   final List<WizardItem> _items = [];
   bool _isSaving = false;
   bool _hasUnsavedChanges = false;
+  bool _isLoadingItems = false;
 
-  InvoiceWizardController() {
-    _date = DateFormat('dd MMM yyyy').format(DateTime.now());
-    _billNumber =
-        "SE-${DateFormat('yyMM').format(DateTime.now())}-${(100 + (DateTime.now().second % 890 + 1)).toString()}";
-    _initSequentialBillNumber();
+  InvoiceWizardController({
+    this.isEdit = false,
+    this.existingInvoiceId,
+    this.existingPdfPath,
+    String? initialBillNumber,
+    String? initialDate,
+    String? initialCustomerName,
+    String? initialPhoneNumber,
+    List<WizardItem>? initialItems,
+  }) {
+    if (isEdit) {
+      _billNumber = initialBillNumber ?? "";
+      _date = initialDate ?? DateFormat('dd MMM yyyy').format(DateTime.now());
+      _customerName = initialCustomerName ?? "";
+      _phoneNumber = initialPhoneNumber ?? "";
+      if (initialItems != null && initialItems.isNotEmpty) {
+        _items.addAll(initialItems);
+      } else if (existingInvoiceId != null) {
+        loadExistingItems(existingInvoiceId!);
+      }
+    } else {
+      _date = DateFormat('dd MMM yyyy').format(DateTime.now());
+      _billNumber =
+          "SE-${DateFormat('yyMM').format(DateTime.now())}-${(100 + (DateTime.now().second % 890 + 1)).toString()}";
+      _initSequentialBillNumber();
+    }
   }
 
   // Getters
@@ -47,6 +74,7 @@ class InvoiceWizardController extends ChangeNotifier {
   List<WizardItem> get items => List.unmodifiable(_items);
   bool get isSaving => _isSaving;
   bool get hasUnsavedChanges => _hasUnsavedChanges;
+  bool get isLoadingItems => _isLoadingItems;
 
   double get subtotal => _items.fold(0.0, (sum, it) => sum + it.amount);
   double get grandTotal => subtotal;
@@ -66,6 +94,34 @@ class InvoiceWizardController extends ChangeNotifier {
       _billNumber = nextNum;
       notifyListeners();
     } catch (_) {}
+  }
+
+  Future<void> loadExistingItems(int invoiceId) async {
+    _isLoadingItems = true;
+    notifyListeners();
+    try {
+      final fetched = await DatabaseHelper.instance.getInvoiceItems(invoiceId);
+      _items.clear();
+      for (final item in fetched) {
+        _items.add(
+          WizardItem(
+            name: item['itemName']?.toString() ?? '',
+            qty: (item['qty'] as num?)?.toDouble() ?? 1.0,
+            price: (item['price'] as num?)?.toDouble() ?? 0.0,
+          ),
+        );
+      }
+      if (_items.isEmpty) {
+        // Fallback default item for easy editing
+        _items.add(WizardItem(name: "Switch 6A", qty: 1.0, price: 45.0));
+      }
+    } catch (_) {
+      if (_items.isEmpty) {
+        _items.add(WizardItem(name: "Switch 6A", qty: 1.0, price: 45.0));
+      }
+    }
+    _isLoadingItems = false;
+    notifyListeners();
   }
 
   void setDate(String newDate) {
@@ -148,10 +204,19 @@ class InvoiceWizardController extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<Map<String, dynamic>> toDbItemsList() {
-    return _items
-        .map((it) => {'itemName': it.name, 'qty': it.qty, 'price': it.price})
-        .toList();
+  List<Map<String, dynamic>> toDbItemsList([int? invoiceId]) {
+    final effectiveId = invoiceId ?? existingInvoiceId;
+    return _items.map((it) {
+      final map = <String, dynamic>{
+        'itemName': it.name,
+        'qty': it.qty,
+        'price': it.price,
+      };
+      if (effectiveId != null) {
+        map['invoiceId'] = effectiveId;
+      }
+      return map;
+    }).toList();
   }
 
   List<Map<String, dynamic>> toPdfItemsList() {

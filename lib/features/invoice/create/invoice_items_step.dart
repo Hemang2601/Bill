@@ -525,7 +525,7 @@ class _InvoiceItemsStepState extends State<InvoiceItemsStep> {
                         children: [
                           Expanded(
                             child: AppSectionHeader(
-                              title: "Billed Line Items",
+                              title: "Line Items",
                               subtitle:
                                   "${widget.controller.totalItemsCount} item(s) in this draft",
                             ),

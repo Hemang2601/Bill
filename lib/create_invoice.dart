@@ -5,7 +5,8 @@ import 'features/invoice/create/customer_details_step.dart';
 import 'features/invoice/create/invoice_items_step.dart';
 import 'features/invoice/create/invoice_review_step.dart';
 
-/// Premium Multi-Step Invoice Creation Wizard for Shree Shakti Electric
+/// Premium Multi-Step Invoice Creation Wizard for Shree Shakti Electric Service
+/// Clean White Theme, high-contrast typography, and sticky bottom summary bar.
 /// Step 1: Customer Details
 /// Step 2: Items & Pricing
 /// Step 3: Review & Generate Invoice PDF
@@ -18,6 +19,7 @@ class CreateInvoicePage extends StatefulWidget {
 
 class _CreateInvoicePageState extends State<CreateInvoicePage> {
   late final InvoiceWizardController _controller;
+  int _lastStep = 0;
 
   @override
   void initState() {
@@ -94,21 +96,29 @@ class _CreateInvoicePageState extends State<CreateInvoicePage> {
           ),
         ),
         body: _buildCurrentStepView(),
+        bottomNavigationBar: _buildStickyBottomSummaryBar(),
       ),
     );
   }
 
   Widget _buildCurrentStepView() {
+    final bool isForward = _controller.currentStep >= _lastStep;
+    _lastStep = _controller.currentStep;
+
+    Widget stepWidget;
     switch (_controller.currentStep) {
       case 0:
-        return CustomerDetailsStep(
+        stepWidget = CustomerDetailsStep(
+          key: const ValueKey('step_customer'),
           controller: _controller,
           onContinue: () {
             _controller.goToStep(1);
           },
         );
+        break;
       case 1:
-        return InvoiceItemsStep(
+        stepWidget = InvoiceItemsStep(
+          key: const ValueKey('step_items'),
           controller: _controller,
           onBack: () {
             _controller.goToStep(0);
@@ -117,8 +127,10 @@ class _CreateInvoicePageState extends State<CreateInvoicePage> {
             _controller.goToStep(2);
           },
         );
+        break;
       case 2:
-        return InvoiceReviewStep(
+        stepWidget = InvoiceReviewStep(
+          key: const ValueKey('step_review'),
           controller: _controller,
           onBack: () {
             _controller.goToStep(1);
@@ -133,8 +145,116 @@ class _CreateInvoicePageState extends State<CreateInvoicePage> {
             Navigator.of(context).pop(true);
           },
         );
+        break;
       default:
-        return const SizedBox();
+        stepWidget = const SizedBox(key: ValueKey('step_empty'));
     }
+
+    return AnimatedSwitcher(
+      duration: AppMotion.base,
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        final offsetTween =
+            Tween<Offset>(
+              begin: Offset(isForward ? 0.05 : -0.05, 0),
+              end: Offset.zero,
+            ).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            );
+
+        return SlideTransition(
+          position: offsetTween,
+          child: FadeTransition(opacity: animation, child: child),
+        );
+      },
+      child: stepWidget,
+    );
+  }
+
+  Widget _buildStickyBottomSummaryBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: const Border(
+          top: BorderSide(color: AppColors.border, width: 1.0),
+        ),
+        boxShadow: AppShadows.barTop,
+      ),
+      child: SafeArea(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySoft,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: const Icon(
+                      Icons.calculate_rounded,
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "LIVE TOTAL (${_controller.totalItemsCount} ${_controller.totalItemsCount == 1 ? 'ITEM' : 'ITEMS'})",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.labelCaps.copyWith(
+                            fontSize: 9.5,
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          CurrencyFormatter.format(_controller.grandTotal),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.currencyMedium.copyWith(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceSubtle,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Text(
+                "Step ${_controller.currentStep + 1} of 3",
+                style: AppTypography.labelCaps.copyWith(
+                  fontSize: 10,
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

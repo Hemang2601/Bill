@@ -288,7 +288,7 @@ class _AppNavigationDrawerState extends State<AppNavigationDrawer> {
             height: 44,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                colors: [Color(0xFF1D4ED8), Color(0xFF0284C7)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),

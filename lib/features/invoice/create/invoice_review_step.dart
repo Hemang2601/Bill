@@ -70,10 +70,24 @@ class _InvoiceReviewStepState extends State<InvoiceReviewStep> {
         'pdfPath': pdfFile.path,
       };
 
-      final itemsData = widget.controller.toDbItemsList();
-
-      // 4. Insert invoice and items atomically into SQLite
-      await DatabaseHelper.instance.saveCompleteInvoice(invoiceData, itemsData);
+      if (widget.controller.isEdit &&
+          widget.controller.existingInvoiceId != null) {
+        invoiceData['id'] = widget.controller.existingInvoiceId!;
+        final itemsData = widget.controller.toDbItemsList(
+          widget.controller.existingInvoiceId!,
+        );
+        await DatabaseHelper.instance.updateCompleteInvoice(
+          invoiceData: invoiceData,
+          items: itemsData,
+        );
+      } else {
+        final itemsData = widget.controller.toDbItemsList();
+        // Insert invoice and items atomically into SQLite
+        await DatabaseHelper.instance.saveCompleteInvoice(
+          invoiceData,
+          itemsData,
+        );
+      }
 
       widget.controller.markClean();
       widget.controller.setSaving(false);
@@ -88,7 +102,7 @@ class _InvoiceReviewStepState extends State<InvoiceReviewStep> {
         totalAmount: widget.controller.grandTotal,
         pdfFile: pdfFile,
         pdfBytes: pdfBytes,
-        isNewInvoice: true,
+        isNewInvoice: !widget.controller.isEdit,
         onFinish: () {
           Navigator.of(context).pop(); // Dismiss success dialog
           widget.onComplete(); // Exit wizard
@@ -439,7 +453,9 @@ class _InvoiceReviewStepState extends State<InvoiceReviewStep> {
                   Expanded(
                     flex: 6,
                     child: AppButton(
-                      label: "SAVE & GENERATE PDF",
+                      label: widget.controller.isEdit
+                          ? "UPDATE & REGENERATE PDF"
+                          : "SAVE & GENERATE PDF",
                       icon: Icons.picture_as_pdf_rounded,
                       variant: AppButtonVariant.primary,
                       size: AppButtonSize.large,

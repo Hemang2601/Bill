@@ -626,6 +626,8 @@ void main() {
       });
 
       // 2. Advance to Step 2: Items & Pricing
+      await tester.ensureVisible(find.text('CONTINUE TO ITEMS & PRICING'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('CONTINUE TO ITEMS & PRICING'));
       await tester.pumpAndSettle();
 

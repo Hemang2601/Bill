@@ -24,9 +24,9 @@ void main() {
     });
   });
 
-  group('EditInvoicePage UI & Functional Tests', () {
+  group('EditInvoicePage 3-Step Wizard UI & Functional Tests', () {
     testWidgets(
-      '1. Edit Invoice screen renders correctly with prepopulated metadata',
+      '1. Edit Invoice wizard renders Step 1 with prepopulated customer metadata',
       (WidgetTester tester) async {
         tester.view.physicalSize = const Size(1200, 1000);
         tester.view.devicePixelRatio = 1.0;
@@ -48,13 +48,11 @@ void main() {
         );
         expect(find.text('INV-2026-0042'), findsWidgets);
 
-        // Section titles
-        expect(find.text('CUSTOMER & INVOICE INFO'), findsOneWidget);
-        expect(find.text('QUICK INVENTORY CHIPS'), findsOneWidget);
-        expect(find.text('BILLING LINE ITEMS'), findsOneWidget);
-        expect(find.text('INVOICE IDENTIFICATION'), findsOneWidget);
-        expect(find.text('UPDATED SUMMARY'), findsOneWidget);
-        expect(find.text('UPDATE & REGENERATE PDF'), findsOneWidget);
+        // Step 1 titles
+        expect(find.text('STEP 1: CUSTOMER DETAILS'), findsOneWidget);
+        expect(find.text('CLIENT DETAILS'), findsOneWidget);
+        expect(find.text('INVOICE INFORMATION'), findsOneWidget);
+        expect(find.text('CONTINUE TO ITEMS & PRICING'), findsOneWidget);
 
         // Prepopulated values
         expect(find.text('PATEL ELECTRICALS'), findsOneWidget);
@@ -68,7 +66,7 @@ void main() {
       },
     );
 
-    testWidgets('2. Customer details can be modified', (
+    testWidgets('2. Customer details can be modified on Step 1', (
       WidgetTester tester,
     ) async {
       tester.view.physicalSize = const Size(1200, 1000);
@@ -94,7 +92,10 @@ void main() {
 
       expect(find.text('SHARMA TRADERS'), findsOneWidget);
 
-      final phoneField = find.widgetWithText(AppTextField, 'Mobile Number');
+      final phoneField = find.widgetWithText(
+        AppTextField,
+        'Mobile Number (Optional)',
+      );
       await tester.enterText(phoneField, '9988776655');
       await tester.pump();
 
@@ -107,9 +108,9 @@ void main() {
     });
 
     testWidgets(
-      '3. Adding and removing line items updates item count and subtotal',
+      '3. Advancing to Step 2 renders Items & Pricing and popular electrical items',
       (WidgetTester tester) async {
-        tester.view.physicalSize = const Size(1200, 1100);
+        tester.view.physicalSize = const Size(1200, 1200);
         tester.view.devicePixelRatio = 1.0;
 
         await tester.pumpWidget(
@@ -121,24 +122,17 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 350));
 
-        // There is 1 default item row added if db returns empty in test mode
-        expect(find.text('1 ITEM'), findsOneWidget);
+        // Advance to Step 2
+        final continueBtn = find.text('CONTINUE TO ITEMS & PRICING');
+        expect(continueBtn, findsOneWidget);
+        await tester.ensureVisible(continueBtn);
+        await tester.tap(continueBtn);
+        await tester.pumpAndSettle();
 
-        // Add a second item
-        final addItemBtn = find.text('ADD NEW LINE ITEM');
-        expect(addItemBtn, findsOneWidget);
-        await tester.tap(addItemBtn);
-        await tester.pump();
-
-        expect(find.text('2 ITEMS'), findsOneWidget);
-
-        // Tap remove on the second item
-        final deleteButtons = find.byIcon(Icons.delete_outline_rounded);
-        expect(deleteButtons, findsNWidgets(2));
-        await tester.tap(deleteButtons.last);
-        await tester.pump();
-
-        expect(find.text('1 ITEM'), findsOneWidget);
+        expect(find.text('STEP 2: ITEMS & PRICING'), findsOneWidget);
+        expect(find.text('LINE ITEMS'), findsOneWidget);
+        expect(find.text('POPULAR ELECTRICAL ITEMS'), findsOneWidget);
+        expect(find.text('ADD ITEM TO BILL'), findsOneWidget);
 
         addTearDown(() {
           tester.view.resetPhysicalSize();
@@ -148,9 +142,9 @@ void main() {
     );
 
     testWidgets(
-      '4. Quick catalog chip updates empty line item or appends new item',
+      '4. Adding an item in Step 2 updates item list and grand total',
       (WidgetTester tester) async {
-        tester.view.physicalSize = const Size(1200, 1000);
+        tester.view.physicalSize = const Size(1200, 1400);
         tester.view.devicePixelRatio = 1.0;
 
         await tester.pumpWidget(
@@ -162,13 +156,26 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 350));
 
+        // Step 1 -> Step 2
+        final continueBtn = find.text('CONTINUE TO ITEMS & PRICING');
+        await tester.ensureVisible(continueBtn);
+        await tester.tap(continueBtn);
+        await tester.pumpAndSettle();
+
+        // Tap quick catalog chip for Switch 6A
         final switchChip = find.text('Switch 6A (₹45)');
         expect(switchChip, findsOneWidget);
-
+        await tester.ensureVisible(switchChip);
         await tester.tap(switchChip);
         await tester.pump();
 
-        expect(find.text('Switch 6A'), findsOneWidget);
+        // Add to bill
+        final addBtn = find.text('ADD ITEM TO BILL');
+        await tester.ensureVisible(addBtn);
+        await tester.tap(addBtn);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Switch 6A'), findsWidgets);
 
         addTearDown(() {
           tester.view.resetPhysicalSize();
@@ -178,9 +185,9 @@ void main() {
     );
 
     testWidgets(
-      '5. Mobile layout renders sticky bottom bar and mobile items list',
+      '5. Advancing to Step 3 displays Review summary and UPDATE & REGENERATE PDF',
       (WidgetTester tester) async {
-        tester.view.physicalSize = const Size(400, 800);
+        tester.view.physicalSize = const Size(1200, 1400);
         tester.view.devicePixelRatio = 1.0;
 
         await tester.pumpWidget(
@@ -192,9 +199,34 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 350));
 
-        // Mobile sticky bottom bar contains 'UPDATED TOTAL' and 'UPDATE & SAVE'
-        expect(find.text('UPDATED TOTAL'), findsOneWidget);
-        expect(find.text('UPDATE & SAVE'), findsOneWidget);
+        // Step 1 -> Step 2
+        final continueBtn = find.text('CONTINUE TO ITEMS & PRICING');
+        await tester.ensureVisible(continueBtn);
+        await tester.tap(continueBtn);
+        await tester.pumpAndSettle();
+
+        // Add an item
+        final chip = find.text('Switch 6A (₹45)');
+        await tester.ensureVisible(chip);
+        await tester.tap(chip);
+        await tester.pump();
+
+        final addBtn = find.text('ADD ITEM TO BILL');
+        await tester.ensureVisible(addBtn);
+        await tester.tap(addBtn);
+        await tester.pumpAndSettle();
+
+        // Step 2 -> Step 3
+        final reviewBtn = find.text('CONTINUE TO REVIEW');
+        expect(reviewBtn, findsOneWidget);
+        await tester.ensureVisible(reviewBtn);
+        await tester.pumpAndSettle();
+        await tester.tap(reviewBtn);
+        await tester.pumpAndSettle();
+
+        expect(find.text('STEP 3: REVIEW & FINALIZE'), findsOneWidget);
+        expect(find.text('UPDATE & REGENERATE PDF'), findsOneWidget);
+        expect(find.text('PATEL ELECTRICALS'), findsWidgets);
 
         addTearDown(() {
           tester.view.resetPhysicalSize();
@@ -204,7 +236,34 @@ void main() {
     );
 
     testWidgets(
-      '6. Unsaved changes discard confirmation dialog is triggered on exit attempt',
+      '6. Mobile layout (380x750) renders sticky bottom summary cleanly without overflow',
+      (WidgetTester tester) async {
+        tester.view.physicalSize = const Size(380, 750);
+        tester.view.devicePixelRatio = 1.0;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: EditInvoicePage(existingInvoice: sampleInvoice),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+
+        expect(find.text('EDIT INVOICE'), findsOneWidget);
+        expect(find.textContaining('UPDATED TOTAL'), findsOneWidget);
+        expect(find.text('Step 1 of 3'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+      },
+    );
+
+    testWidgets(
+      '7. Unsaved changes discard confirmation dialog is triggered on exit attempt',
       (WidgetTester tester) async {
         tester.view.physicalSize = const Size(1200, 1000);
         tester.view.devicePixelRatio = 1.0;

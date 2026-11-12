@@ -185,14 +185,7 @@ class _LoginPageState extends State<LoginPage>
             color: AppColors.surface,
             shape: BoxShape.circle,
             border: Border.all(color: AppColors.border, width: 1.5),
-            boxShadow: [
-              ...AppShadows.card,
-              BoxShadow(
-                color: AppColors.primary.withAlpha(50),
-                blurRadius: 20,
-                spreadRadius: 2,
-              ),
-            ],
+            boxShadow: [...AppShadows.card, ...AppShadows.primaryGlow],
           ),
           child: Center(
             child: Container(
@@ -200,7 +193,7 @@ class _LoginPageState extends State<LoginPage>
               height: 56,
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                  colors: [AppColors.primary, AppColors.primaryLight],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -415,34 +408,58 @@ class _LoginPageState extends State<LoginPage>
     required bool isSelected,
     required VoidCallback onTap,
   }) {
+    final String imagePath = name.toLowerCase() == "hiren"
+        ? 'assets/images/hiren.png'
+        : 'assets/images/suresh.png';
+
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.primarySoft : AppColors.surfaceSubtle,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? AppColors.primaryLight : AppColors.border,
-            width: isSelected ? 1.5 : 1.0,
+            color: isSelected ? AppColors.primary : AppColors.border,
+            width: isSelected ? 2.0 : 1.0,
           ),
-          boxShadow: isSelected ? AppShadows.primaryGlow : null,
+          boxShadow: isSelected ? AppShadows.sm : null,
         ),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 14,
-              backgroundColor: isSelected
-                  ? AppColors.primary
-                  : AppColors.surfaceMuted,
-              child: Text(
-                name[0].toUpperCase(),
-                style: TextStyle(
-                  color: isSelected ? Colors.white : AppColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSelected ? AppColors.primary : AppColors.border,
+                  width: isSelected ? 2.0 : 1.0,
+                ),
+              ),
+              child: ClipOval(
+                child: Image.asset(
+                  imagePath,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    color: isSelected
+                        ? AppColors.primarySoft
+                        : AppColors.surfaceMuted,
+                    child: Center(
+                      child: Text(
+                        name[0].toUpperCase(),
+                        style: TextStyle(
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.textSecondary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -466,7 +483,7 @@ class _LoginPageState extends State<LoginPage>
                     style: AppTypography.bodySmall.copyWith(
                       fontSize: 10,
                       color: isSelected
-                          ? AppColors.primaryLight
+                          ? AppColors.primary
                           : AppColors.textMuted,
                     ),
                   ),
@@ -476,7 +493,7 @@ class _LoginPageState extends State<LoginPage>
             if (isSelected)
               const Icon(
                 Icons.check_circle_rounded,
-                color: AppColors.primaryLight,
+                color: AppColors.primary,
                 size: 16,
               ),
           ],

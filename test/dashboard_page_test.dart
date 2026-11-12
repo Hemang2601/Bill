@@ -45,10 +45,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('TOTAL INVOICES'), findsOneWidget);
       expect(find.text('TOTAL REVENUE'), findsOneWidget);
-      expect(find.text('TOTAL CUSTOMERS'), findsOneWidget);
-      expect(find.text('RECENT BILLS'), findsOneWidget);
+      expect(find.text('PAID AMOUNT'), findsOneWidget);
+      expect(find.text('PENDING AMOUNT'), findsOneWidget);
+      expect(find.text('TOTAL INVOICES'), findsOneWidget);
     });
 
     testWidgets('Renders quick action cards for New Bill and History', (
@@ -63,9 +63,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('Create New Bill'), findsOneWidget);
-      expect(find.text('View All Bills'), findsOneWidget);
-      expect(find.text('Search Invoice'), findsOneWidget);
+      expect(find.text('Create Invoice'), findsOneWidget);
+      expect(find.text('NEW BILL'), findsOneWidget);
+      expect(find.text('Invoice History'), findsOneWidget);
     });
 
     testWidgets('Displays empty state gracefully when no invoices exist', (
@@ -80,7 +80,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('No Invoices Yet'), findsOneWidget);
+      expect(find.text('No Invoices Recorded Yet'), findsOneWidget);
       expect(find.text('CREATE FIRST BILL'), findsOneWidget);
     });
 

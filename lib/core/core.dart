@@ -4,6 +4,7 @@ export 'theme/app_typography.dart';
 export 'theme/app_spacing.dart';
 export 'theme/app_radius.dart';
 export 'theme/app_shadows.dart';
+export 'theme/app_motion.dart';
 export 'theme/app_theme.dart';
 
 // Utils
