@@ -112,6 +112,7 @@ class _CustomerDetailsStepState extends State<CustomerDetailsStep> {
                 // Step Banner
                 Container(
                   padding: const EdgeInsets.all(16),
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: AppColors.primarySoft,
                     borderRadius: BorderRadius.circular(16),

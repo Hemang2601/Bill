@@ -238,6 +238,7 @@ class _CreateInvoicePageState extends State<CreateInvoicePage> {
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: AppColors.surfaceSubtle,
                 borderRadius: BorderRadius.circular(20),

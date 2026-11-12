@@ -112,6 +112,7 @@ class _AppTextFieldState extends State<AppTextField> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: widget.enabled
                   ? AppColors.surface
@@ -125,7 +126,7 @@ class _AppTextFieldState extends State<AppTextField> {
                           : (_isHovered && widget.enabled
                                 ? AppColors.borderHover
                                 : AppColors.border)),
-                width: _isFocused ? 1.5 : 1.0,
+                width: _isFocused ? 1.6 : 1.0,
               ),
               boxShadow: _isFocused
                   ? [
@@ -161,6 +162,8 @@ class _AppTextFieldState extends State<AppTextField> {
                 fontWeight: FontWeight.w600,
               ),
               decoration: InputDecoration(
+                filled: false,
+                fillColor: Colors.transparent,
                 hintText: widget.hint,
                 hintStyle: AppTypography.bodyMedium.copyWith(
                   color: AppColors.textMuted,

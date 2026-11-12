@@ -75,6 +75,7 @@ class _AppCardState extends State<AppCard> {
         duration: AppMotion.fast,
         curve: Curves.easeOutCubic,
         margin: widget.margin,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: widget.backgroundColor ?? AppColors.surface,
           borderRadius: borderRadius,

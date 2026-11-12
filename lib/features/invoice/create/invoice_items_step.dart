@@ -232,6 +232,7 @@ class _InvoiceItemsStepState extends State<InvoiceItemsStep> {
                 // Step Banner
                 Container(
                   padding: const EdgeInsets.all(16),
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: AppColors.primarySoft,
                     borderRadius: BorderRadius.circular(16),
@@ -588,6 +589,7 @@ class _InvoiceItemsStepState extends State<InvoiceItemsStep> {
                               horizontal: 10,
                               vertical: 4,
                             ),
+                            clipBehavior: Clip.antiAlias,
                             decoration: BoxDecoration(
                               color: AppColors.primarySoft,
                               borderRadius: BorderRadius.circular(12),

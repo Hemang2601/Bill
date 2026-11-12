@@ -54,6 +54,7 @@ void main() {
       tester,
     ) async {
       final controller = TextEditingController();
+      final focusNode = FocusNode();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -61,6 +62,7 @@ void main() {
           home: Scaffold(
             body: AppTextField(
               controller: controller,
+              focusNode: focusNode,
               label: 'Customer Name',
               hint: 'Enter customer name',
               prefixIcon: Icons.person_outline,
@@ -75,6 +77,23 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'Ramesh Patel');
       expect(controller.text, 'Ramesh Patel');
+
+      // Focus field to verify blue focus border and anti-aliased rounded corners
+      focusNode.requestFocus();
+      await tester.pumpAndSettle();
+
+      final animatedContainer = tester.widget<AnimatedContainer>(
+        find.byType(AnimatedContainer).first,
+      );
+      expect(animatedContainer.clipBehavior, equals(Clip.antiAlias));
+
+      final decoration = animatedContainer.decoration as BoxDecoration;
+      expect(decoration.borderRadius, equals(AppRadius.m));
+      expect(decoration.border?.top.color, equals(AppColors.primary));
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.decoration?.filled, isFalse);
+      expect(textField.decoration?.fillColor, equals(Colors.transparent));
     });
 
     testWidgets('AppCard renders child with styled borders', (tester) async {
