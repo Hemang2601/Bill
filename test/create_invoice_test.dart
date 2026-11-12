@@ -516,5 +516,66 @@ void main() {
         });
       },
     );
+
+    testWidgets(
+      '14. Entering item name, qty, and rate per unit and submitting or tapping right dismiss option unfocuses keyboard',
+      (WidgetTester tester) async {
+        tester.view.physicalSize = const Size(800, 1000);
+        tester.view.devicePixelRatio = 1.0;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: const CreateInvoicePage(),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+
+        // Advance to step 2
+        await tester.tap(find.text('CONTINUE TO ITEMS & PRICING'));
+        await tester.pumpAndSettle();
+
+        final nameField = find.widgetWithText(
+          AppTextField,
+          'Product / Item Description *',
+        );
+        final qtyField = find.widgetWithText(AppTextField, 'Quantity *');
+        final priceField = find.widgetWithText(
+          AppTextField,
+          'Rate per Unit (₹) *',
+        );
+
+        await tester.enterText(nameField, 'MCB 32A Double Pole');
+        await tester.pump();
+        await tester.enterText(qtyField, '3');
+        await tester.pump();
+        await tester.enterText(priceField, '450');
+        await tester.pump();
+
+        // Right dismiss icon exists on the field
+        final dismissIcons = find.byIcon(Icons.keyboard_hide_rounded);
+        expect(dismissIcons, findsWidgets);
+
+        // Tap the right dismiss icon on rate per unit to unfocus
+        await tester.tap(dismissIcons.last);
+        await tester.pumpAndSettle();
+
+        // Tap price field and submit via keyboard done action
+        await tester.tap(priceField);
+        await tester.pumpAndSettle();
+
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+
+        expect(find.text('1 ITEM'), findsOneWidget);
+        expect(find.text('MCB 32A Double Pole'), findsOneWidget);
+
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+      },
+    );
   });
 }

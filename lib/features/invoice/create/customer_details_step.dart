@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../../core/core.dart';
 import 'invoice_wizard_controller.dart';
@@ -185,6 +186,20 @@ class _CustomerDetailsStepState extends State<CustomerDetailsStep> {
                         prefixIcon: Icons.business_rounded,
                         textCapitalization: TextCapitalization.characters,
                         textInputAction: TextInputAction.next,
+                        suffix: IconButton(
+                          icon: const Icon(
+                            Icons.keyboard_hide_rounded,
+                            size: 20,
+                            color: AppColors.textSecondary,
+                          ),
+                          tooltip: "Dismiss Keyboard",
+                          onPressed: () {
+                            FocusScope.of(context).unfocus();
+                            SystemChannels.textInput.invokeMethod(
+                              'TextInput.hide',
+                            );
+                          },
+                        ),
                         onSubmitted: (_) {
                           _phoneFocus.requestFocus();
                         },
@@ -202,8 +217,25 @@ class _CustomerDetailsStepState extends State<CustomerDetailsStep> {
                         keyboardType: TextInputType.phone,
                         textInputAction: TextInputAction.done,
                         errorText: _phoneError,
+                        suffix: IconButton(
+                          icon: const Icon(
+                            Icons.keyboard_hide_rounded,
+                            size: 20,
+                            color: AppColors.primary,
+                          ),
+                          tooltip: "Dismiss Keyboard",
+                          onPressed: () {
+                            FocusScope.of(context).unfocus();
+                            SystemChannels.textInput.invokeMethod(
+                              'TextInput.hide',
+                            );
+                          },
+                        ),
                         onSubmitted: (_) {
                           FocusScope.of(context).unfocus();
+                          SystemChannels.textInput.invokeMethod(
+                            'TextInput.hide',
+                          );
                         },
                       ),
 
