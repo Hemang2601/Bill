@@ -516,6 +516,25 @@ void main() {
           expect(hirenBytes, isNotEmpty);
         },
       );
+
+      test(
+        '13. Invoice using "name" key in items map renders item name accurately in PDF',
+        () async {
+          SharedPreferences.setMockInitialValues({'userName': 'suresh'});
+          final bytes = await InvoicePdfService.generateInvoicePdf(
+            billNumber: 'SE-2611-114',
+            customerName: 'Customer Test',
+            phoneNumber: '9999911111',
+            date: '12 Nov 2026',
+            items: [
+              {'name': 'Anchor Modular Switch 6A', 'qty': 5, 'price': 40.0},
+            ],
+            totalAmount: 200.0,
+          );
+          expect(bytes, isNotEmpty);
+          expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+        },
+      );
     },
   );
 }

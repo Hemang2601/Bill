@@ -63,6 +63,8 @@ class AppSectionHeader extends StatelessWidget {
       children: [
         Text(
           title.toUpperCase(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: AppTypography.labelCaps.copyWith(
             color: AppColors.textPrimary,
             fontSize: 12,
@@ -70,7 +72,12 @@ class AppSectionHeader extends StatelessWidget {
           ),
         ),
         if (subtitle != null) ...[
-          Text(subtitle!, style: AppTypography.bodySmall),
+          Text(
+            subtitle!,
+            style: AppTypography.bodySmall,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ],
     );

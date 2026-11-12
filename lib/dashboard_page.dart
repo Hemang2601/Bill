@@ -818,10 +818,13 @@ class _DashboardPageState extends State<DashboardPage>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const AppSectionHeader(
-              title: "Recent Invoices",
-              subtitle: "Latest billing entries and payment state",
+            const Expanded(
+              child: AppSectionHeader(
+                title: "Recent Invoices",
+                subtitle: "Latest billing entries and payment state",
+              ),
             ),
+            const SizedBox(width: 8),
             TextButton.icon(
               onPressed: () {
                 Navigator.of(context)

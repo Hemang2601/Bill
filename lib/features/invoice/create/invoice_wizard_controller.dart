@@ -224,6 +224,7 @@ class InvoiceWizardController extends ChangeNotifier {
         .map(
           (it) => {
             'name': it.name,
+            'itemName': it.name,
             'qty': it.qty,
             'price': it.price,
             'amount': it.amount,

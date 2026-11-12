@@ -423,6 +423,32 @@ void main() {
           });
         },
       );
+
+      testWidgets(
+        '5.4 DashboardPage Recent Invoices header on narrow width 328px has zero RenderFlex overflow',
+        (tester) async {
+          tester.view.physicalSize = const Size(328, 700);
+          tester.view.devicePixelRatio = 1.0;
+
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: AppTheme.lightTheme,
+              home: const Scaffold(body: DashboardPage(userName: 'suresh')),
+            ),
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+
+          expect(tester.takeException(), isNull);
+          expect(find.text('RECENT INVOICES'), findsOneWidget);
+          expect(find.text('View All'), findsOneWidget);
+
+          addTearDown(() {
+            tester.view.resetPhysicalSize();
+            tester.view.resetDevicePixelRatio();
+          });
+        },
+      );
     },
   );
 }
