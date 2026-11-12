@@ -314,47 +314,59 @@ class _DashboardPageState extends State<DashboardPage>
       'EEEE, d MMMM yyyy',
     ).format(DateTime.now());
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      drawer: const AppNavigationDrawer(currentRoute: '/dashboard'),
-      appBar: _buildTopHeader(managerName),
-      body: SafeArea(
-        child: RefreshIndicator(
-          color: AppColors.primary,
-          backgroundColor: AppColors.surface,
-          onRefresh: _refreshData,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16.0,
-              vertical: 20.0,
-            ),
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1100),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // 1. Welcome Header Banner
-                      _buildWelcomeBanner(managerName, todayDate),
-                      AppSpacing.gapVxl,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final shouldExit = await AppDialog.showExitAppConfirmation(
+          context: context,
+        );
+        if (shouldExit == true && context.mounted) {
+          SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        drawer: const AppNavigationDrawer(currentRoute: '/dashboard'),
+        appBar: _buildTopHeader(managerName),
+        body: SafeArea(
+          child: RefreshIndicator(
+            color: AppColors.primary,
+            backgroundColor: AppColors.surface,
+            onRefresh: _refreshData,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 20.0,
+              ),
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1100),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // 1. Welcome Header Banner
+                        _buildWelcomeBanner(managerName, todayDate),
+                        AppSpacing.gapVxl,
 
-                      // 2. Focused Revenue & Billing Summary Section
-                      _buildRevenueSummarySection(),
-                      AppSpacing.gapVxxl,
+                        // 2. Focused Revenue & Billing Summary Section
+                        _buildRevenueSummarySection(),
+                        AppSpacing.gapVxxl,
 
-                      // 3. Primary Focused Navigation Actions (Create & History)
-                      _buildPrimaryNavigationActions(),
-                      AppSpacing.gapVxxl,
+                        // 3. Primary Focused Navigation Actions (Create & History)
+                        _buildPrimaryNavigationActions(),
+                        AppSpacing.gapVxxl,
 
-                      // 4. Recent Invoices List
-                      _buildRecentInvoicesSection(),
-                      const SizedBox(height: 40),
-                    ],
+                        // 4. Recent Invoices List
+                        _buildRecentInvoicesSection(),
+                        const SizedBox(height: 40),
+                      ],
+                    ),
                   ),
                 ),
               ),

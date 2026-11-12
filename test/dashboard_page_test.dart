@@ -155,5 +155,44 @@ void main() {
       expect(find.text('SIGN OUT'), findsOneWidget);
       expect(find.text('CANCEL'), findsOneWidget);
     });
+
+    testWidgets('Back press on Dashboard triggers Exit Application confirmation dialog', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: const DashboardPage(userName: 'Suresh'),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final popScopeFinder = find.byWidgetPredicate((w) => w is PopScope);
+      expect(popScopeFinder, findsOneWidget);
+
+      final popScope = tester.widget<PopScope<Object?>>(popScopeFinder);
+      expect(popScope.canPop, isFalse);
+
+      // Simulate system back button / gesture
+      final dynamic widgetsAppState = tester.state(find.byType(WidgetsApp));
+      await widgetsAppState.didPopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Exit Application'), findsOneWidget);
+      expect(
+        find.text(
+          'Are you sure you want to exit Shree Shakti Electric Service?',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('EXIT'), findsOneWidget);
+      expect(find.text('CANCEL'), findsOneWidget);
+
+      // Tapping CANCEL dismisses the dialog safely
+      await tester.tap(find.text('CANCEL'));
+      await tester.pumpAndSettle();
+      expect(find.text('Exit Application'), findsNothing);
+    });
   });
 }

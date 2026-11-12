@@ -253,6 +253,26 @@ abstract class AppDialog {
     );
   }
 
+  /// Specialized helper for confirming application exit on dashboard back press
+  static Future<bool?> showExitAppConfirmation({
+    required BuildContext context,
+    String cancelLabel = "CANCEL",
+  }) {
+    return showConfirmation(
+      context: context,
+      title: "Exit Application",
+      highlightPill: "Exit App",
+      message:
+          "Are you sure you want to exit Shree Shakti Electric Service?",
+      confirmLabel: "EXIT",
+      cancelLabel: cancelLabel,
+      iconType: DialogIconType.warning,
+      confirmIcon: Icons.exit_to_app_rounded,
+      cancelIcon: Icons.close_rounded,
+      isDestructive: true,
+    );
+  }
+
   /// Specialized helper for notifying of missing PDF file
   static Future<bool?> showMissingPdfDialog({
     required BuildContext context,
