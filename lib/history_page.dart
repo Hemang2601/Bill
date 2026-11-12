@@ -11,17 +11,31 @@ import 'services/invoice_status_service.dart';
 import 'edit_invoice_page.dart';
 import 'create_invoice.dart';
 
+enum HistorySortOption {
+  dateDesc("Date: Newest First", "NEWEST"),
+  dateAsc("Date: Oldest First", "OLDEST"),
+  amountDesc("Amount: High to Low", "AMOUNT ↓"),
+  amountAsc("Amount: Low to High", "AMOUNT ↑"),
+  customerAsc("Customer: A to Z", "A-Z");
+
+  final String label;
+  final String shortLabel;
+  const HistorySortOption(this.label, this.shortLabel);
+}
+
 /// Clean High-Contrast White Theme Bill History & Ledger for Shree Shakti Electric Service
 /// Dedicated Search Bar, Status Filter Chips (All, Paid, Pending), Date Period Filters,
 /// and Clean White Cards with Status Pill Badges and Direct Action Buttons.
 class HistoryPage extends StatefulWidget {
   final bool autoFocusSearch;
   final String? initialQuery;
+  final List<Map<String, dynamic>>? initialInvoices;
 
   const HistoryPage({
     super.key,
     this.autoFocusSearch = false,
     this.initialQuery,
+    this.initialInvoices,
   });
 
   @override
@@ -37,6 +51,7 @@ class _HistoryPageState extends State<HistoryPage>
   // Search & Filter State
   String _searchQuery = "";
   String _statusFilter = "All"; // "All", "Paid", "Pending"
+  HistorySortOption _sortOption = HistorySortOption.dateDesc;
   DateTime? _startDate;
   DateTime? _endDate;
   final TextEditingController _searchController = TextEditingController();
@@ -120,15 +135,81 @@ class _HistoryPageState extends State<HistoryPage>
     } catch (_) {}
   }
 
+  void _applySorting(List<Map<String, dynamic>> list) {
+    list.sort((a, b) {
+      switch (_sortOption) {
+        case HistorySortOption.dateDesc:
+          final d1 =
+              DatabaseHelper.parseDateRobust(a['date']?.toString() ?? '') ??
+              DateTime(1970);
+          final d2 =
+              DatabaseHelper.parseDateRobust(b['date']?.toString() ?? '') ??
+              DateTime(1970);
+          final comp = d2.compareTo(d1);
+          if (comp != 0) return comp;
+          return ((b['id'] as num?)?.toInt() ?? 0).compareTo(
+            (a['id'] as num?)?.toInt() ?? 0,
+          );
+        case HistorySortOption.dateAsc:
+          final d1 =
+              DatabaseHelper.parseDateRobust(a['date']?.toString() ?? '') ??
+              DateTime(1970);
+          final d2 =
+              DatabaseHelper.parseDateRobust(b['date']?.toString() ?? '') ??
+              DateTime(1970);
+          final comp = d1.compareTo(d2);
+          if (comp != 0) return comp;
+          return ((a['id'] as num?)?.toInt() ?? 0).compareTo(
+            (b['id'] as num?)?.toInt() ?? 0,
+          );
+        case HistorySortOption.amountDesc:
+          final a1 = (a['totalAmount'] as num?)?.toDouble() ?? 0.0;
+          final a2 = (b['totalAmount'] as num?)?.toDouble() ?? 0.0;
+          return a2.compareTo(a1);
+        case HistorySortOption.amountAsc:
+          final a1 = (a['totalAmount'] as num?)?.toDouble() ?? 0.0;
+          final a2 = (b['totalAmount'] as num?)?.toDouble() ?? 0.0;
+          return a1.compareTo(a2);
+        case HistorySortOption.customerAsc:
+          final c1 = (a['customerName']?.toString() ?? '').toLowerCase();
+          final c2 = (b['customerName']?.toString() ?? '').toLowerCase();
+          return c1.compareTo(c2);
+      }
+    });
+  }
+
+  void _changeSortOption(HistorySortOption newOption) {
+    setState(() {
+      _sortOption = newOption;
+      _applySorting(_invoices);
+    });
+  }
+
   Future<void> _fetchDataFromDB() async {
     setState(() => _isLoading = true);
 
     try {
-      final rawData = await DatabaseHelper.instance.getFilteredInvoices(
-        searchQuery: _searchQuery,
-        startDate: _startDate,
-        endDate: _endDate,
-      );
+      List<Map<String, dynamic>> rawData;
+      if (widget.initialInvoices != null) {
+        rawData = widget.initialInvoices!.where((inv) {
+          if (_searchQuery.isNotEmpty) {
+            final q = _searchQuery.toLowerCase();
+            final num = (inv['billNumber']?.toString() ?? '').toLowerCase();
+            final cust = (inv['customerName']?.toString() ?? '').toLowerCase();
+            final phone = (inv['phoneNumber']?.toString() ?? '').toLowerCase();
+            if (!num.contains(q) && !cust.contains(q) && !phone.contains(q)) {
+              return false;
+            }
+          }
+          return true;
+        }).toList();
+      } else {
+        rawData = await DatabaseHelper.instance.getFilteredInvoices(
+          searchQuery: _searchQuery,
+          startDate: _startDate,
+          endDate: _endDate,
+        );
+      }
       final paidIds = await InvoiceStatusService.getPaidInvoiceIds();
 
       List<Map<String, dynamic>> filtered = rawData;
@@ -143,6 +224,8 @@ class _HistoryPageState extends State<HistoryPage>
             )
             .toList();
       }
+
+      _applySorting(filtered);
 
       if (mounted) {
         setState(() {
@@ -197,6 +280,41 @@ class _HistoryPageState extends State<HistoryPage>
     _fetchDataFromDB();
   }
 
+  Future<void> _selectSpecificMonth() async {
+    final now = DateTime.now();
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _startDate ?? now,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(now.year + 5),
+      initialDatePickerMode: DatePickerMode.year,
+      helpText: "SELECT MONTH & YEAR",
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.primary,
+              onPrimary: Colors.white,
+              surface: AppColors.surface,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (pickedDate != null) {
+      setState(() {
+        _startDate = DateTime(pickedDate.year, pickedDate.month, 1);
+        _endDate = DateTime(pickedDate.year, pickedDate.month + 1, 0);
+        _isCustomRange = true;
+        _activeFilter = DateFormat('MMMM yyyy').format(pickedDate);
+      });
+      _fetchDataFromDB();
+    }
+  }
+
   Future<void> _selectCustomDateRange() async {
     final DateTimeRange? pickedRange = await showDateRangePicker(
       context: context,
@@ -241,8 +359,26 @@ class _HistoryPageState extends State<HistoryPage>
       _endDate = null;
       _activeFilter = "All Time";
       _isCustomRange = false;
+      _sortOption = HistorySortOption.dateDesc;
     });
     _fetchDataFromDB();
+  }
+
+  void _shareInvoicePdf(Map<String, dynamic> inv) async {
+    final pdfPath = inv['pdfPath']?.toString() ?? '';
+    final file = File(pdfPath);
+    if (await file.exists()) {
+      final billNumber = inv['billNumber']?.toString() ?? '';
+      await Share.shareXFiles([
+        XFile(file.path),
+      ], text: 'Invoice #$billNumber from Shree Shakti Electric');
+    } else {
+      if (!mounted) return;
+      AppDialog.showMissingPdfDialog(
+        context: context,
+        billNumber: inv['billNumber']?.toString() ?? '',
+      );
+    }
   }
 
   Future<void> _togglePaidStatus(int invoiceId) async {
@@ -547,7 +683,7 @@ class _HistoryPageState extends State<HistoryPage>
                   },
                 ),
               ),
-              AppSpacing.gapHm,
+              AppSpacing.gapHs,
               IconButton.filledTonal(
                 icon: const Icon(
                   Icons.date_range_rounded,
@@ -562,6 +698,88 @@ class _HistoryPageState extends State<HistoryPage>
                   padding: const EdgeInsets.all(12),
                 ),
                 onPressed: _selectCustomDateRange,
+              ),
+              AppSpacing.gapHs,
+              PopupMenuButton<HistorySortOption>(
+                tooltip: "Sort Invoices",
+                initialValue: _sortOption,
+                onSelected: _changeSortOption,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: AppColors.border),
+                ),
+                color: AppColors.surface,
+                child: Container(
+                  height: 48,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primarySoft,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.primaryLight.withAlpha(50),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.sort_rounded,
+                        color: AppColors.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _sortOption.shortLabel,
+                        style: AppTypography.labelCaps.copyWith(
+                          color: AppColors.primary,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const Icon(
+                        Icons.arrow_drop_down_rounded,
+                        color: AppColors.primary,
+                        size: 18,
+                      ),
+                    ],
+                  ),
+                ),
+                itemBuilder: (context) => HistorySortOption.values.map((opt) {
+                  final bool isSelected = opt == _sortOption;
+                  return PopupMenuItem<HistorySortOption>(
+                    value: opt,
+                    child: Row(
+                      children: [
+                        Icon(
+                          isSelected
+                              ? Icons.radio_button_checked_rounded
+                              : Icons.radio_button_unchecked_rounded,
+                          size: 18,
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.textMuted,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            opt.label,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: isSelected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : AppColors.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
               ),
               if (hasActiveFilters) ...[
                 AppSpacing.gapHs,
@@ -698,18 +916,27 @@ class _HistoryPageState extends State<HistoryPage>
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
-              itemCount: _filters.length + (_isCustomRange ? 1 : 0),
+              itemCount: _filters.length + 1 + (_isCustomRange ? 1 : 0),
               separatorBuilder: (context, _) => const SizedBox(width: 8),
               itemBuilder: (context, index) {
-                if (_isCustomRange && index == _filters.length) {
+                if (index < _filters.length) {
+                  final title = _filters[index];
+                  final isActive = _activeFilter == title && !_isCustomRange;
+
                   return FilterChip(
-                    selected: true,
-                    label: Text(_activeFilter),
-                    onSelected: (_) => _selectCustomDateRange(),
+                    selected: isActive,
+                    label: Text(title),
+                    onSelected: (_) => _handleFilterSelection(title),
+                    backgroundColor: AppColors.surface,
                     selectedColor: AppColors.primary,
-                    labelStyle: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                    labelStyle: TextStyle(
+                      color: isActive ? Colors.white : AppColors.textPrimary,
+                      fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                    side: BorderSide(
+                      color: isActive ? AppColors.primary : AppColors.border,
+                      width: 1.0,
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
@@ -717,23 +944,38 @@ class _HistoryPageState extends State<HistoryPage>
                   );
                 }
 
-                final title = _filters[index];
-                final isActive = _activeFilter == title && !_isCustomRange;
+                if (index == _filters.length) {
+                  return ActionChip(
+                    avatar: const Icon(
+                      Icons.calendar_month_rounded,
+                      size: 15,
+                      color: AppColors.primary,
+                    ),
+                    label: const Text("Select Month"),
+                    backgroundColor: AppColors.primarySoft,
+                    side: BorderSide(
+                      color: AppColors.primaryLight.withAlpha(50),
+                    ),
+                    labelStyle: const TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    onPressed: _selectSpecificMonth,
+                  );
+                }
 
                 return FilterChip(
-                  selected: isActive,
-                  label: Text(title),
-                  onSelected: (_) => _handleFilterSelection(title),
-                  backgroundColor: AppColors.surface,
+                  selected: true,
+                  label: Text(_activeFilter),
+                  onSelected: (_) => _selectCustomDateRange(),
                   selectedColor: AppColors.primary,
-                  labelStyle: TextStyle(
-                    color: isActive ? Colors.white : AppColors.textPrimary,
-                    fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                  side: BorderSide(
-                    color: isActive ? AppColors.primary : AppColors.border,
-                    width: 1.0,
+                  labelStyle: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
@@ -788,129 +1030,314 @@ class _HistoryPageState extends State<HistoryPage>
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isDesktop = constraints.maxWidth >= 640;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: AppSectionHeader(
-                title: "Recorded Bills Ledger",
-                subtitle:
-                    "Showing ${_invoices.length} entries (${_statusFilter == 'All' ? 'All' : _statusFilter} • $_activeFilter)",
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceSubtle,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Text(
-                "${_invoices.length} INVOICES",
-                style: AppTypography.labelCaps.copyWith(
-                  color: AppColors.primary,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: AppSectionHeader(
+                    title: "Recorded Bills Ledger",
+                    subtitle:
+                        "Showing ${_invoices.length} entries (${_statusFilter == 'All' ? 'All' : _statusFilter} • $_activeFilter)",
+                  ),
                 ),
-              ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceSubtle,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Text(
+                    "${_invoices.length} INVOICES",
+                    style: AppTypography.labelCaps.copyWith(
+                      color: AppColors.primary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
             ),
+            AppSpacing.gapVm,
+            _buildInvoiceTable(isDesktop),
           ],
-        ),
-        AppSpacing.gapVm,
-        ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _invoices.length,
-          separatorBuilder: (context, _) => AppSpacing.gapVs,
-          itemBuilder: (context, index) {
-            final inv = _invoices[index];
-            return _buildInvoiceCard(inv);
-          },
-        ),
-      ],
+        );
+      },
     );
   }
 
-  // --- CLEAN WHITE INVOICE CARD ---
-  Widget _buildInvoiceCard(Map<String, dynamic> inv) {
+  // --- STRUCTURED ACCOUNTING LEDGER TABLE ---
+  Widget _buildInvoiceTable(bool isDesktop) {
+    return AppCard(
+      padding: EdgeInsets.zero,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Column(
+          children: [
+            _buildTableHeader(isDesktop),
+            const Divider(height: 1, thickness: 1, color: AppColors.border),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _invoices.length,
+              separatorBuilder: (context, _) => const Divider(
+                height: 1,
+                thickness: 1,
+                color: AppColors.border,
+              ),
+              itemBuilder: (context, index) {
+                final inv = _invoices[index];
+                return _buildTableRow(inv, isDesktop);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- TABLE HEADER ---
+  Widget _buildTableHeader(bool isDesktop) {
+    return Container(
+      color: AppColors.surfaceSubtle,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: isDesktop
+          ? Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    "BILL NO. & DATE",
+                    style: AppTypography.labelCaps.copyWith(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 4,
+                  child: Text(
+                    "CUSTOMER",
+                    style: AppTypography.labelCaps.copyWith(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Center(
+                    child: Text(
+                      "STATUS",
+                      style: AppTypography.labelCaps.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      "AMOUNT",
+                      style: AppTypography.labelCaps.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(
+                  width: 50,
+                  child: Center(
+                    child: Text(
+                      "ACTION",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: Text(
+                    "CUSTOMER & BILL",
+                    style: AppTypography.labelCaps.copyWith(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 9.5,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Center(
+                    child: Text(
+                      "STATUS",
+                      style: AppTypography.labelCaps.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 9.5,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 4,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      "AMOUNT",
+                      style: AppTypography.labelCaps.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 9.5,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(
+                  width: 44,
+                  child: Center(
+                    child: Text(
+                      "ACT",
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  // --- TABLE ROW ---
+  Widget _buildTableRow(Map<String, dynamic> inv, bool isDesktop) {
     final int invoiceId = (inv['id'] as num?)?.toInt() ?? 0;
     final bool isPaid = _paidInvoiceIds.contains(invoiceId);
     final String billNumber = inv['billNumber']?.toString() ?? "N/A";
     final String customer =
         inv['customerName']?.toString().toUpperCase() ?? "CASH CUSTOMER";
     final String date = inv['date']?.toString() ?? "";
-    final String phone = inv['phoneNumber']?.toString() ?? "N/A";
+    final String phone = inv['phoneNumber']?.toString() ?? "";
     final double amount = (inv['totalAmount'] as num?)?.toDouble() ?? 0.0;
 
-    return AppCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Document Icon
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: isPaid ? AppColors.paidSoft : AppColors.primarySoft,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isPaid ? AppColors.paidBorder : AppColors.border,
-                  ),
-                ),
-                child: Icon(
-                  Icons.receipt_long_rounded,
-                  color: isPaid ? AppColors.paid : AppColors.primary,
-                  size: 22,
-                ),
-              ),
-              AppSpacing.gapHm,
-
-              // Invoice Metadata
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showInvoiceActionSheet(inv),
+        hoverColor: AppColors.primarySoft.withAlpha(50),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: isDesktop
+              ? Row(
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
+                    // Column 1: Bill No & Date
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
                             "#$billNumber",
                             style: AppTypography.labelLarge.copyWith(
                               fontWeight: FontWeight.w800,
                               color: AppColors.primary,
-                              fontSize: 14,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                          if (date.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              date,
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // Column 2: Customer Name & Phone
+                    Expanded(
+                      flex: 4,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            customer,
+                            style: AppTypography.bodyMedium.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                              fontSize: 13.5,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Status Pill Badge (Single-tap to toggle)
-                        InkWell(
+                          if (phone.isNotEmpty && phone != "N/A") ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              phone,
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // Column 3: Status Badge (Tap to toggle directly)
+                    Expanded(
+                      flex: 2,
+                      child: Center(
+                        child: InkWell(
                           onTap: () => _togglePaidStatus(invoiceId),
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(16),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
-                              vertical: 2.5,
+                              vertical: 3,
                             ),
                             decoration: BoxDecoration(
                               color: isPaid
                                   ? AppColors.paidSoft
                                   : AppColors.pendingSoft,
-                              borderRadius: BorderRadius.circular(20),
+                              borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: isPaid
                                     ? AppColors.paidBorder
                                     : AppColors.pendingBorder,
-                                width: 1.0,
                               ),
                             ),
                             child: Row(
@@ -940,120 +1367,508 @@ class _HistoryPageState extends State<HistoryPage>
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      customer,
-                      style: AppTypography.bodyMedium.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                        fontSize: 14,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        if (date.isNotEmpty) ...[
+
+                    // Column 4: Amount
+                    Expanded(
+                      flex: 3,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          CurrencyFormatter.format(amount),
+                          style: AppTypography.currencyMedium.copyWith(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Column 5: Action Button
+                    SizedBox(
+                      width: 50,
+                      child: Center(
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.more_vert_rounded,
+                            size: 19,
+                            color: AppColors.textSecondary,
+                          ),
+                          tooltip: "Options",
+                          onPressed: () => _showInvoiceActionSheet(inv),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    // Mobile Column 1: Customer & Bill Info
+                    Expanded(
+                      flex: 5,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            date,
-                            style: AppTypography.bodySmall.copyWith(
-                              fontSize: 11.5,
-                              color: AppColors.textSecondary,
+                            customer,
+                            style: AppTypography.bodyMedium.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                              fontSize: 13,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            "#$billNumber${date.isNotEmpty ? ' • $date' : ''}",
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
-                        if (phone != "N/A" && phone.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          Text(
-                            "• $phone",
-                            style: AppTypography.bodySmall.copyWith(
-                              fontSize: 11.5,
-                              color: AppColors.textSecondary,
+                      ),
+                    ),
+
+                    // Mobile Column 2: Status
+                    Expanded(
+                      flex: 3,
+                      child: Center(
+                        child: InkWell(
+                          onTap: () => _togglePaidStatus(invoiceId),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isPaid
+                                  ? AppColors.paidSoft
+                                  : AppColors.pendingSoft,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isPaid
+                                    ? AppColors.paidBorder
+                                    : AppColors.pendingBorder,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isPaid
+                                      ? Icons.check_circle_rounded
+                                      : Icons.hourglass_top_rounded,
+                                  size: 10,
+                                  color: isPaid
+                                      ? AppColors.paid
+                                      : AppColors.pending,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  isPaid ? "PAID" : "PEND",
+                                  style: AppTypography.labelCaps.copyWith(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: isPaid
+                                        ? AppColors.paid
+                                        : AppColors.pending,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
+                        ),
+                      ),
+                    ),
+
+                    // Mobile Column 3: Amount
+                    Expanded(
+                      flex: 4,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          CurrencyFormatter.format(amount),
+                          style: AppTypography.currencyMedium.copyWith(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13,
+                            color: AppColors.textPrimary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+
+                    // Mobile Column 4: Action Button
+                    SizedBox(
+                      width: 44,
+                      child: Center(
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.more_vert_rounded,
+                            size: 19,
+                            color: AppColors.textSecondary,
+                          ),
+                          tooltip: "Options",
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 36,
+                            minHeight: 36,
+                          ),
+                          onPressed: () => _showInvoiceActionSheet(inv),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
+  // --- LUXURY INVOICE ACTION MODAL SHEET ---
+  void _showInvoiceActionSheet(Map<String, dynamic> inv) {
+    HapticFeedback.mediumImpact();
+    final int invoiceId = (inv['id'] as num?)?.toInt() ?? 0;
+    final bool isPaid = _paidInvoiceIds.contains(invoiceId);
+    final String billNumber = inv['billNumber']?.toString() ?? "N/A";
+    final String customer =
+        inv['customerName']?.toString().toUpperCase() ?? "CASH CUSTOMER";
+    final String date = inv['date']?.toString() ?? "";
+    final String phone = inv['phoneNumber']?.toString() ?? "";
+    final double amount = (inv['totalAmount'] as num?)?.toDouble() ?? 0.0;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 20,
+                offset: Offset(0, -4),
+              ),
+            ],
+          ),
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 12,
+            bottom: MediaQuery.of(sheetContext).padding.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Invoice Details Card in Sheet Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceSubtle,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: isPaid
+                            ? AppColors.paidSoft
+                            : AppColors.primarySoft,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isPaid
+                              ? AppColors.paidBorder
+                              : AppColors.primaryLight.withAlpha(50),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.receipt_long_rounded,
+                        color: isPaid ? AppColors.paid : AppColors.primary,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  "#$billNumber",
+                                  style: AppTypography.labelLarge.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.primary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isPaid
+                                      ? AppColors.paidSoft
+                                      : AppColors.pendingSoft,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isPaid
+                                        ? AppColors.paidBorder
+                                        : AppColors.pendingBorder,
+                                  ),
+                                ),
+                                child: Text(
+                                  isPaid ? "PAID" : "PENDING",
+                                  style: AppTypography.labelCaps.copyWith(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: isPaid
+                                        ? AppColors.paid
+                                        : AppColors.pending,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            customer,
+                            style: AppTypography.bodyMedium.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (date.isNotEmpty || phone.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              [
+                                if (date.isNotEmpty) date,
+                                if (phone.isNotEmpty) phone,
+                              ].join(" • "),
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      CurrencyFormatter.format(amount),
+                      style: AppTypography.currencyMedium.copyWith(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
 
-              // Total Amount
               Text(
-                CurrencyFormatter.format(amount),
-                style: AppTypography.currencyMedium.copyWith(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 20, color: AppColors.border),
-
-          // Action Buttons Bar
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              // 1. Toggle Paid Status Action
-              TextButton.icon(
-                icon: Icon(
-                  isPaid
-                      ? Icons.check_circle_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                  size: 16,
-                  color: isPaid ? AppColors.paid : AppColors.pending,
-                ),
-                label: Text(
-                  isPaid ? "Mark Pending" : "Mark Paid",
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: isPaid ? AppColors.paid : AppColors.pending,
-                  ),
-                ),
-                onPressed: () => _togglePaidStatus(invoiceId),
-              ),
-              const Spacer(),
-
-              // 2. View/Print PDF Action
-              IconButton(
-                icon: const Icon(
-                  Icons.picture_as_pdf_outlined,
-                  size: 19,
-                  color: AppColors.primary,
-                ),
-                tooltip: "View / Print PDF",
-                onPressed: () => _viewPdf(inv),
-              ),
-
-              // 3. Edit Invoice (Matching Wizard) Action
-              IconButton(
-                icon: const Icon(
-                  Icons.edit_outlined,
-                  size: 19,
+                "INVOICE ACTIONS",
+                style: AppTypography.labelCaps.copyWith(
                   color: AppColors.textSecondary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
                 ),
-                tooltip: "Edit Invoice",
-                onPressed: () => _editInvoice(inv),
               ),
+              const SizedBox(height: 10),
 
-              // 4. Delete Invoice Action
-              IconButton(
-                icon: const Icon(
-                  Icons.delete_outline_rounded,
-                  size: 19,
-                  color: AppColors.danger,
-                ),
-                tooltip: "Delete",
-                onPressed: () => _confirmDelete(inv),
+              // Action 1: See PDF (View & Print)
+              _buildSheetActionTile(
+                icon: Icons.picture_as_pdf_rounded,
+                iconColor: AppColors.primary,
+                iconBgColor: AppColors.primarySoft,
+                title: "See PDF Document",
+                subtitle: "View, zoom and print generated PDF invoice",
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _viewPdf(inv);
+                },
+              ),
+              const SizedBox(height: 8),
+
+              // Action 2: Edit Invoice
+              _buildSheetActionTile(
+                icon: Icons.edit_note_rounded,
+                iconColor: AppColors.brandNavy,
+                iconBgColor: AppColors.primarySoft,
+                title: "Edit Invoice",
+                subtitle: "Modify customer details, items, or prices",
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _editInvoice(inv);
+                },
+              ),
+              const SizedBox(height: 8),
+
+              // Action 3: Share PDF
+              _buildSheetActionTile(
+                icon: Icons.share_rounded,
+                iconColor: AppColors.electricBlue,
+                iconBgColor: AppColors.electricSoft,
+                title: "Share PDF Document",
+                subtitle: "Send invoice via WhatsApp, email or message",
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _shareInvoicePdf(inv);
+                },
+              ),
+              const SizedBox(height: 8),
+
+              // Action 4: Toggle Paid / Pending
+              _buildSheetActionTile(
+                icon: isPaid
+                    ? Icons.hourglass_top_rounded
+                    : Icons.check_circle_rounded,
+                iconColor: isPaid ? AppColors.pending : AppColors.paid,
+                iconBgColor: isPaid
+                    ? AppColors.pendingSoft
+                    : AppColors.paidSoft,
+                title: isPaid ? "Mark as Pending" : "Mark as Paid",
+                subtitle: isPaid
+                    ? "Change status to unpaid/pending"
+                    : "Record customer payment as received",
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _togglePaidStatus(invoiceId);
+                },
+              ),
+              const SizedBox(height: 8),
+
+              // Action 5: Delete Invoice (Destructive)
+              _buildSheetActionTile(
+                icon: Icons.delete_outline_rounded,
+                iconColor: AppColors.danger,
+                iconBgColor: AppColors.dangerSoft,
+                title: "Delete Invoice",
+                subtitle: "Permanently delete record and stored PDF file",
+                isDestructive: true,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _confirmDelete(inv);
+                },
               ),
             ],
           ),
-        ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSheetActionTile({
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBgColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    bool isDestructive = false,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: isDestructive
+                ? AppColors.dangerSoft.withAlpha(60)
+                : AppColors.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isDestructive
+                  ? AppColors.danger.withAlpha(50)
+                  : AppColors.border,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: iconBgColor,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: iconColor, size: 20),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AppTypography.bodyMedium.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: isDestructive
+                            ? AppColors.danger
+                            : AppColors.textPrimary,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: isDestructive ? AppColors.danger : AppColors.textMuted,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

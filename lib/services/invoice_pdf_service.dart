@@ -856,8 +856,8 @@ abstract class InvoicePdfService {
     final String name = (item['name'] is TextEditingController)
         ? (item['name'] as TextEditingController).text
         : (item['itemName']?.toString().isNotEmpty == true
-            ? item['itemName'].toString()
-            : (item['name']?.toString() ?? item['title']?.toString() ?? ''));
+              ? item['itemName'].toString()
+              : (item['name']?.toString() ?? item['title']?.toString() ?? ''));
     final double qty = (item['qty'] is TextEditingController)
         ? (double.tryParse((item['qty'] as TextEditingController).text) ?? 0.0)
         : (double.tryParse(item['qty']?.toString() ?? '0') ?? 0.0);

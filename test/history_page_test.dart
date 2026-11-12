@@ -253,5 +253,191 @@ void main() {
         expect(dtEmpty, isNull);
       },
     );
+
+    testWidgets('10. Select Month action chip renders and opens date picker', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = const Size(1400, 1000);
+      tester.view.devicePixelRatio = 1.0;
+
+      await tester.pumpWidget(
+        MaterialApp(theme: AppTheme.lightTheme, home: const HistoryPage()),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      final selectMonthChip = find.widgetWithText(ActionChip, 'Select Month');
+      expect(selectMonthChip, findsOneWidget);
+
+      await tester.ensureVisible(selectMonthChip);
+      await tester.pumpAndSettle();
+
+      await tester.tap(selectMonthChip);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+
+      final cancelBtn = find.text('Cancel');
+      if (cancelBtn.evaluate().isNotEmpty) {
+        await tester.tap(cancelBtn);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+    });
+
+    testWidgets('11. Sort menu button displays all 5 sorting options', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = const Size(800, 1000);
+      tester.view.devicePixelRatio = 1.0;
+
+      await tester.pumpWidget(
+        MaterialApp(theme: AppTheme.lightTheme, home: const HistoryPage()),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      final sortBtn = find.byIcon(Icons.sort_rounded);
+      expect(sortBtn, findsOneWidget);
+
+      await tester.tap(sortBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Date: Newest First'), findsOneWidget);
+      expect(find.text('Date: Oldest First'), findsOneWidget);
+      expect(find.text('Amount: High to Low'), findsOneWidget);
+      expect(find.text('Amount: Low to High'), findsOneWidget);
+      expect(find.text('Customer: A to Z'), findsOneWidget);
+
+      // Select Amount: High to Low
+      await tester.tap(find.text('Amount: High to Low'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('AMOUNT ↓'), findsOneWidget);
+
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+    });
+
+    testWidgets(
+      '12. Table ledger renders structured columns and rows when invoices exist',
+      (WidgetTester tester) async {
+        tester.view.physicalSize = const Size(1200, 1000);
+        tester.view.devicePixelRatio = 1.0;
+
+        final mockInvoices = [
+          {
+            'id': 101,
+            'billNumber': 'SE-2611-101',
+            'customerName': 'Patel Electricals',
+            'phoneNumber': '9876543210',
+            'date': '12/11/2026',
+            'totalAmount': 4500.0,
+            'pdfPath': '',
+          },
+          {
+            'id': 102,
+            'billNumber': 'SE-2611-102',
+            'customerName': 'Shree Ram Cables',
+            'phoneNumber': '9123456780',
+            'date': '11/11/2026',
+            'totalAmount': 12800.0,
+            'pdfPath': '',
+          },
+        ];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: HistoryPage(initialInvoices: mockInvoices),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+
+        // Desktop Table Header assertions
+        expect(find.text('BILL NO. & DATE'), findsOneWidget);
+        expect(find.text('CUSTOMER'), findsOneWidget);
+        expect(
+          find.text('STATUS'),
+          findsNWidgets(2),
+        ); // Status filter label + Table header
+        expect(find.text('AMOUNT'), findsOneWidget);
+        expect(find.text('ACTION'), findsOneWidget);
+
+        // Data rows assertions
+        expect(find.text('#SE-2611-101'), findsOneWidget);
+        expect(find.text('PATEL ELECTRICALS'), findsOneWidget);
+        expect(find.text('#SE-2611-102'), findsOneWidget);
+        expect(find.text('SHREE RAM CABLES'), findsOneWidget);
+
+        // Row action buttons
+        expect(find.byIcon(Icons.more_vert_rounded), findsNWidgets(2));
+
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+      },
+    );
+
+    testWidgets(
+      '13. Clicking table row action button opens luxury Action Bottom Sheet with all options',
+      (WidgetTester tester) async {
+        tester.view.physicalSize = const Size(800, 1000);
+        tester.view.devicePixelRatio = 1.0;
+
+        final mockInvoices = [
+          {
+            'id': 201,
+            'billNumber': 'SE-2611-201',
+            'customerName': 'Apex Power Works',
+            'phoneNumber': '9988776655',
+            'date': '12/11/2026',
+            'totalAmount': 8950.0,
+            'pdfPath': '',
+          },
+        ];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: HistoryPage(initialInvoices: mockInvoices),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+
+        // Tap the action button for the invoice
+        final actionButton = find.byIcon(Icons.more_vert_rounded).first;
+        await tester.tap(actionButton);
+        await tester.pumpAndSettle();
+
+        // Verify Luxury Action Sheet content
+        expect(find.text('INVOICE ACTIONS'), findsOneWidget);
+        expect(find.text('See PDF Document'), findsOneWidget);
+        expect(find.text('Edit Invoice'), findsOneWidget);
+        expect(find.text('Share PDF Document'), findsOneWidget);
+        expect(find.text('Mark as Paid'), findsOneWidget);
+        expect(find.text('Delete Invoice'), findsOneWidget);
+
+        // Verify Invoice details in sheet header
+        expect(find.text('#SE-2611-201'), findsNWidgets(2)); // Row + Sheet
+        expect(find.text('APEX POWER WORKS'), findsNWidgets(2));
+
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+      },
+    );
   });
 }

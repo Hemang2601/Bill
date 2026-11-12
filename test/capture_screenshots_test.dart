@@ -292,6 +292,54 @@ void main() {
   ) async {
     final desktopHistoryKey = GlobalKey();
 
+    final sampleInvoices = [
+      {
+        'id': 1,
+        'billNumber': 'SE-2611-1042',
+        'customerName': 'Patel Electrical Works',
+        'phoneNumber': '9876543210',
+        'date': '12/11/2026',
+        'totalAmount': 18500.0,
+        'pdfPath': '',
+      },
+      {
+        'id': 2,
+        'billNumber': 'SE-2611-1041',
+        'customerName': 'Shree Ram Cables & Wires',
+        'phoneNumber': '9823456789',
+        'date': '11/11/2026',
+        'totalAmount': 6450.0,
+        'pdfPath': '',
+      },
+      {
+        'id': 3,
+        'billNumber': 'SE-2611-1040',
+        'customerName': 'Apex Power Solutions',
+        'phoneNumber': '9428012345',
+        'date': '09/11/2026',
+        'totalAmount': 32900.0,
+        'pdfPath': '',
+      },
+      {
+        'id': 4,
+        'billNumber': 'SE-2611-1039',
+        'customerName': 'Jay Ambe Switchgears',
+        'phoneNumber': '9725067890',
+        'date': '08/11/2026',
+        'totalAmount': 4200.0,
+        'pdfPath': '',
+      },
+      {
+        'id': 5,
+        'billNumber': 'SE-2611-1038',
+        'customerName': 'Krishna Hardware & Electric',
+        'phoneNumber': '9909012345',
+        'date': '05/11/2026',
+        'totalAmount': 14800.0,
+        'pdfPath': '',
+      },
+    ];
+
     // 1. Capture History Desktop View (1200 x 850)
     tester.view.physicalSize = const Size(1200, 850);
     tester.view.devicePixelRatio = 1.0;
@@ -302,7 +350,7 @@ void main() {
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,
-          home: const HistoryPage(),
+          home: HistoryPage(initialInvoices: sampleInvoices),
         ),
       ),
     );
@@ -332,7 +380,7 @@ void main() {
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,
-          home: const HistoryPage(),
+          home: HistoryPage(initialInvoices: sampleInvoices),
         ),
       ),
     );
@@ -353,6 +401,40 @@ void main() {
 
       final mobileFile = File('$artifactDir/history_screen_mobile.png');
       await mobileFile.writeAsBytes(mobileBytes, flush: true);
+    });
+
+    // 3. Capture Action Bottom Sheet Preview
+    final actionSheetKey = GlobalKey();
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: actionSheetKey,
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          home: HistoryPage(initialInvoices: sampleInvoices),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // Tap first action button to open sheet
+    final firstActionBtn = find.byIcon(Icons.more_vert_rounded).first;
+    await tester.tap(firstActionBtn);
+    await tester.pumpAndSettle();
+
+    await tester.runAsync(() async {
+      final sheetBoundary =
+          actionSheetKey.currentContext!.findRenderObject()
+              as RenderRepaintBoundary;
+      final ui.Image sheetImage = await sheetBoundary.toImage(pixelRatio: 1.0);
+      final sheetByteData = await sheetImage.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      final sheetBytes = sheetByteData!.buffer.asUint8List();
+
+      final sheetFile = File('$artifactDir/history_action_sheet.png');
+      await sheetFile.writeAsBytes(sheetBytes, flush: true);
     });
 
     tester.view.resetPhysicalSize();
