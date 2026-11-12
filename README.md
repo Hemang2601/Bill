@@ -1,160 +1,226 @@
-# ⚡ Shree Shakti Electric
-
-<h3 align="center">Premium Billing Management Application</h3>
+# ⚡ SHREE SHAKTI ELECTRIC
 
 <p align="center">
-  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=22&pause=1000&color=2563EB&center=true&vCenter=true&width=650&lines=Smart+Billing.+Simple+Management.;Create+Professional+Invoices.;Manage+Your+Business+Effortlessly.;Built+with+Flutter+%26+Dart." alt="Animated introduction" />
+  <img src="https://readme-typing-svg.demolab.com?font=Inter&weight=700&size=25&duration=3000&pause=1000&color=2563EB&center=true&vCenter=true&width=750&height=55&lines=Smart+Billing.+Simplified+Business.;Professional+Invoices.+Effortless+Management.;A+Modern+Billing+Experience." alt="Shree Shakti Electric" />
 </p>
 
 <p align="center">
-  A modern, responsive, and feature-rich billing application designed to simplify everyday business operations for Shree Shakti Electric.
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Flutter-3.41.5-02569B?style=for-the-badge&logo=flutter&logoColor=white" />
-  <img src="https://img.shields.io/badge/Dart-Powered-0175C2?style=for-the-badge&logo=dart&logoColor=white" />
-  <img src="https://img.shields.io/badge/Database-SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white" />
-  <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Windows-10B981?style=for-the-badge" />
+  <b>A Premium Billing & Invoice Management Application</b>
+  <br/>
+  Built to make everyday business operations smarter, faster, and more organized.
 </p>
 
 <p align="center">
   <a href="https://github.com/Hemang2601/Bill">
-    <img src="https://img.shields.io/badge/View%20Repository-GitHub-181717?style=flat-square&logo=github" />
+    <img src="https://img.shields.io/badge/PROJECT%20REPOSITORY-181717?style=for-the-badge&logo=github&logoColor=white" />
   </a>
-  <img src="https://img.shields.io/badge/Status-Active-10B981?style=flat-square" />
-  <img src="https://img.shields.io/badge/Version-1.0-blue?style=flat-square" />
+  <img src="https://img.shields.io/badge/BUILT%20WITH-FLUTTER-02569B?style=for-the-badge&logo=flutter&logoColor=white" />
+  <img src="https://img.shields.io/badge/POWERED%20BY-DART-0175C2?style=for-the-badge&logo=dart&logoColor=white" />
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square&logo=sqlite" />
+  <img src="https://img.shields.io/badge/Architecture-Modular-7C3AED?style=flat-square" />
+  <img src="https://img.shields.io/badge/Design-Premium%20UI-10B981?style=flat-square" />
+  <img src="https://img.shields.io/badge/Status-Active-2563EB?style=flat-square" />
 </p>
 
 ---
 
-## ✨ About the Project
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=rect&color=0:172554,50:2563EB,100:0EA5E9&height=3&section=header" width="100%" />
+</p>
 
-**Shree Shakti Electric** is a modern billing management application developed using Flutter and Dart.
+## 01 — Overview
 
-It helps manage invoices, customer information, billing history, and PDF documents through a simple and professional interface.
+**Shree Shakti Electric** is a modern, Flutter-powered billing management solution designed to streamline invoice creation, customer billing, document generation, and business record management.
 
-Designed with a premium white theme, colorful accents, and responsive layouts, the application provides a smooth experience across mobile devices and larger screens.
+Built around a clean, premium interface and a reliable local database, it transforms traditional billing operations into a simple digital workflow.
 
-## 🚀 Features
+The application focuses on three important principles:
+
+<p align="center">
+  <img src="https://img.shields.io/badge/01-Simplicity-2563EB?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/02-Reliability-7C3AED?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/03-Professionalism-0D9488?style=for-the-badge" />
+</p>
+
+## 02 — Core Capabilities
 
 <table>
 <tr>
-<td width="50%">
-<h3>🔐 Manager Authentication</h3>
-<ul>
-<li>Predefined manager accounts</li>
-<li>Session persistence</li>
-<li>Manager-specific signatures</li>
-<li>No public registration</li>
-</ul>
+<td width="50%" valign="top">
+
+### ◈ Intelligent Dashboard
+
+- Real-time invoice statistics
+- Total revenue overview
+- Customer insights
+- Recent billing activity
+- Quick navigation and actions
+
 </td>
-<td width="50%">
-<h3>📊 Smart Dashboard</h3>
-<ul>
-<li>Total invoice statistics</li>
-<li>Revenue overview</li>
-<li>Customer statistics</li>
-<li>Recent invoice activity</li>
-</ul>
-</td>
-</tr>
-<tr>
-<td width="50%">
-<h3>🧾 Invoice Management</h3>
-<ul>
-<li>Three-step invoice workflow</li>
-<li>Customer information</li>
-<li>Multiple invoice items</li>
-<li>Automatic calculations</li>
-</ul>
-</td>
-<td width="50%">
-<h3>📄 PDF Generation</h3>
-<ul>
-<li>Professional invoice PDFs</li>
-<li>Manager signatures</li>
-<li>Print and share support</li>
-<li>Preserved invoice layout</li>
-</ul>
+<td width="50%" valign="top">
+
+### ◈ Manager Authentication
+
+- Predefined manager accounts
+- Persistent login sessions
+- Manager-specific signatures
+- Controlled application access
+- No public registration
+
 </td>
 </tr>
 <tr>
-<td width="50%">
-<h3>📚 Billing History</h3>
-<ul>
-<li>Search and date filters</li>
-<li>View invoice details</li>
-<li>Share and print invoices</li>
-<li>Safe invoice deletion</li>
-</ul>
+<td width="50%" valign="top">
+
+### ◈ Smart Invoice Builder
+
+- Three-step invoice workflow
+- Customer information management
+- Multiple product and service entries
+- Automatic calculations
+- Invoice review before generation
+
 </td>
-<td width="50%">
-<h3>✏️ Edit Invoices</h3>
-<ul>
-<li>Update customer details</li>
-<li>Modify invoice items</li>
-<li>Automatic recalculation</li>
-<li>Preserve existing bill number</li>
-</ul>
+<td width="50%" valign="top">
+
+### ◈ Professional PDF Engine
+
+- Structured invoice generation
+- Business and customer information
+- Itemized billing details
+- Authorized manager signatures
+- Print and sharing support
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### ◈ Billing History
+
+- Search by invoice number
+- Customer and mobile search
+- Flexible date filters
+- Invoice details and PDF access
+- Safe deletion operations
+
+</td>
+<td width="50%" valign="top">
+
+### ◈ Invoice Editing
+
+- Update existing invoices
+- Modify products and quantities
+- Automatic total recalculation
+- Preserve original invoice identity
+- Replace the associated PDF
+
 </td>
 </tr>
 </table>
 
-## 🎨 Application Design
+## 03 — Application Workflow
 
 <p align="center">
-  <strong>Luxury White Theme · Colorful Accents · Responsive Interface</strong>
+  <b>From customer details to a professionally generated invoice.</b>
 </p>
-
-The application follows a consistent design system featuring:
-
-- Clean white surfaces and soft neutral backgrounds.
-- Electric blue and navy primary colors.
-- Balanced violet, emerald, amber, and coral accents.
-- Premium cards, modern typography, and subtle shadows.
-- Smooth transitions and interactive feedback.
-- Mobile-first layouts with desktop responsiveness.
-
-## 🔄 How It Works
 
 ```mermaid
 flowchart TD
-    A([Launch Application]) --> B[Manager Login]
-    B --> C[Dashboard]
-    C --> D[Create Invoice]
-    D --> E[Customer Details]
+    A([Application Launch]) --> B[Manager Authentication]
+    B --> C[Business Dashboard]
+    C --> D[Create New Invoice]
+    D --> E[Customer Information]
     E --> F[Items and Pricing]
-    F --> G[Review Invoice]
+    F --> G[Review and Verification]
     G --> H[Generate PDF]
-    H --> I[(Save to SQLite)]
+    H --> I[(SQLite Database)]
     I --> J[Share or Print]
     C --> K[Invoice History]
     K --> L[View / Edit / Delete]
     L --> I
 
-    style A fill:#2563EB,color:#fff
-    style H fill:#10B981,color:#fff
-    style I fill:#7C3AED,color:#fff
+    style A fill:#172554,color:#fff,stroke:#172554
+    style H fill:#2563EB,color:#fff,stroke:#2563EB
+    style I fill:#7C3AED,color:#fff,stroke:#7C3AED
+    style J fill:#059669,color:#fff,stroke:#059669
 ```
 
-## 🛠️ Technology Stack
+## 04 — Design Philosophy
+
+**A refined interface. A practical experience.**
+
+The application follows a premium white-theme design system with carefully balanced colorful accents.
+
+| Design Element | Direction |
+|---|---|
+| Primary Theme | Luxury White |
+| Primary Color | Electric Blue |
+| Secondary Color | Deep Navy |
+| Accent Colors | Violet, Emerald, Amber, Coral |
+| Interface | Clean and Minimal |
+| Components | Modern Cards and Dialogs |
+| Interaction | Smooth Micro-animations |
+| Layout | Mobile-first and Responsive |
+
+The design prioritizes readability, accessibility, consistency, and usability rather than unnecessary visual complexity.
+
+## 05 — Technology Architecture
 
 <p align="center">
-  <img src="https://skillicons.dev/icons?i=flutter,dart,sqlite,androidstudio,vscode,git,github" alt="Technology stack" />
+  <img src="https://skillicons.dev/icons?i=flutter,dart,sqlite,androidstudio,vscode,git,github" alt="Development technologies" />
 </p>
 
-| Technology | Usage |
-|---|---|
-| Flutter | Cross-platform UI |
-| Dart | Application development |
-| SQLite | Local database |
-| SharedPreferences | Session persistence |
-| PDF | Invoice generation |
-| Printing | Print invoices |
-| Share Plus | Share documents |
-| Intl | Currency and date formatting |
+| Layer | Technology | Responsibility |
+|---|---|---|
+| Frontend | Flutter | Responsive application UI |
+| Language | Dart | Application logic |
+| Database | SQLite | Persistent local storage |
+| Session | SharedPreferences | Login session persistence |
+| Documents | PDF | Invoice generation |
+| Printing | Printing | Physical invoice printing |
+| Sharing | Share Plus | Document sharing |
+| Formatting | Intl | Currency and date formatting |
 
-## 🗂️ Project Structure
+## 06 — Database Structure
+
+**Database:** `shree_shakti.db`
+
+**Schema Version:** `3`
+
+| Table | Purpose |
+|---|---|
+| `managers` | Authorized manager records |
+| `invoices` | Invoice and customer information |
+| `invoice_items` | Individual invoice line items |
+
+### Invoice Numbering System
+
+Every invoice follows a structured sequential format:
+
+```text
+SE-yyMM-XXX
+```
+
+Example:
+
+```text
+SE-2611-001
+SE-2611-002
+SE-2611-003
+```
+
+**Data integrity principles:**
+
+- Transaction-based invoice operations.
+- Invoice and item records maintained together.
+- Existing invoice numbers preserved during editing.
+- Foreign key relationships and cascade handling.
+
+## 07 — Project Structure
 
 ```text
 Bill/
@@ -190,168 +256,156 @@ Bill/
 └── README.md
 ```
 
-*The structure above is a high-level overview. Refer to the repository for the actual implementation.*
+*High-level representation; actual folders may differ.*
 
-## 🗄️ Database Design
+## 08 — Getting Started
 
-Database: `shree_shakti.db`
-
-Schema Version: `3`
-
-| Table | Responsibility |
-|---|---|
-| `managers` | Authorized manager records |
-| `invoices` | Invoice and customer details |
-| `invoice_items` | Individual invoice items |
-
-### Automatic Invoice Numbering
-
-```text
-SE-yyMM-XXX
-
-SE-2611-001
-SE-2611-002
-SE-2611-003
-```
-
-Invoices use sequential numbering and transactional database operations.
-
-## ⚙️ Installation & Setup
-
-### Prerequisites
+### Requirements
 
 - Flutter SDK
 - Dart SDK
-- Android Studio or VS Code
+- Android Studio or Visual Studio Code
 - Android SDK
 - Git
 
-### Clone Repository
+### Installation
+
+**Step 1 — Clone the repository**
 
 ```bash
 git clone https://github.com/Hemang2601/Bill.git
 ```
 
-### Open Project
+**Step 2 — Open the project**
 
 ```bash
 cd Bill
 ```
 
-### Install Dependencies
+**Step 3 — Install dependencies**
 
 ```bash
 flutter pub get
 ```
 
-### Check Environment
+**Step 4 — Verify the development environment**
 
 ```bash
 flutter doctor
 ```
 
-### Run Application
+**Step 5 — Launch the application**
 
 ```bash
 flutter run
 ```
 
-### Run Tests
+### Development Commands
 
-```bash
-flutter test
-```
-
-### Analyze Code
-
-```bash
-flutter analyze
-```
-
-## 🧪 Quality Assurance
-
-Latest reported project QA results:
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Automated%20Tests-79%20Passed-10B981?style=for-the-badge&logo=flutter" />
-  <img src="https://img.shields.io/badge/Flutter%20Analyze-No%20Issues-2563EB?style=for-the-badge" />
-</p>
-
-- Invoice calculation tests.
-- Database operation tests.
-- Authentication workflow tests.
-- Invoice creation and editing tests.
-- Application workflow validation.
-
-*These results reflect the latest reported QA run and should be updated after future test runs.*
-
-## 📸 Screenshots
-
-<p align="center">
-  <i>Application screenshots will be added here.</i>
-</p>
-
-<!--
-Add your actual screenshots to a GitHub screenshots/ folder
-and replace the placeholders below.
-
-<p align="center">
-  <img src="screenshots/login.png" width="30%" />
-  <img src="screenshots/dashboard.png" width="30%" />
-  <img src="screenshots/create-invoice.png" width="30%" />
-</p>
--->
-
-## 🔒 Data & Security
-
-- Local SQLite database storage.
-- Predefined manager authentication.
-- Persistent login sessions.
-- Manager-specific invoice signatures.
-- Transaction-based invoice operations.
-- Confirmation before destructive operations.
-
-**Security note:** The current manager password implementation has not yet been migrated to a dedicated slow password-hashing algorithm. Additional security hardening is recommended before production deployment.
-
-## 🖥️ Platform Support
-
-| Platform | Status |
+| Command | Purpose |
 |---|---|
-| Android | Primary platform |
-| Windows | Development/build setup in progress |
+| `flutter pub get` | Install dependencies |
+| `flutter run` | Run application |
+| `flutter test` | Execute automated tests |
+| `flutter analyze` | Analyze Dart code |
+| `flutter build apk` | Build Android APK |
+| `flutter build windows` | Build Windows application |
+
+## 09 — Quality & Testing
+
+<p align="center">
+  <img src="https://img.shields.io/badge/TESTS-79%20PASSED-059669?style=for-the-badge&logo=checkmarx&logoColor=white" />
+  <img src="https://img.shields.io/badge/STATIC%20ANALYSIS-CLEAN-2563EB?style=for-the-badge&logo=flutter&logoColor=white" />
+</p>
+
+The latest reported QA run covered:
+
+- Authentication workflows
+- Invoice calculations
+- Database operations
+- Invoice creation and editing
+- Application functionality
+
+*Test results reflect the latest reported run and should be refreshed after subsequent code changes.*
+
+## 10 — Application Preview
+
+<p align="center">
+  <b>Experience the interface</b>
+  <br/>
+  <sub>Real application screenshots will be added here.</sub>
+</p>
+
+<!-- Add actual screenshots to the screenshots/ directory. -->
+
+<p align="center">
+  <img src="screenshots/login.png" width="30%" alt="Manager Login" />
+  <img src="screenshots/dashboard.png" width="30%" alt="Dashboard" />
+  <img src="screenshots/create-invoice.png" width="30%" alt="Invoice Creation" />
+</p>
+
+<p align="center">
+  <sub>Replace these image paths with real screenshots before publishing.</sub>
+</p>
+
+## 11 — Security & Data Management
+
+- Local SQLite data persistence.
+- Predefined manager authentication.
+- Session persistence.
+- Manager-specific invoice signatures.
+- Transactional invoice updates.
+- Confirmation for destructive operations.
+
+> **Security consideration:** The current manager password implementation has not yet been migrated to a dedicated slow password-hashing algorithm. Further security hardening is recommended before production deployment.
+
+## 12 — Platform Compatibility
+
+| Platform | Availability |
+|---|---|
+| Android | Primary development platform |
+| Windows | Build setup in progress |
 | iOS | Not verified |
 | Web | Not verified |
 
-## 🗺️ Future Improvements
+## 13 — Roadmap
 
-- Advanced sales analytics.
-- Database backup and restore.
-- Invoice export and reporting.
-- Enhanced authentication security.
-- Additional business configuration options.
+- [ ] Enhanced password security
+- [ ] Database backup and restoration
+- [ ] Advanced sales analytics
+- [ ] Detailed financial reports
+- [ ] Additional business configuration
+- [ ] Improved deployment and release workflow
 
-## 👨‍💻 Developer
+## 14 — Developer
 
 <p align="center">
-  <strong>Hemang Lakhadiya</strong><br/>
-  MCA Student · Flutter Developer · Full Stack Developer
-  <br/><br/>
+  <img src="https://img.shields.io/badge/DEVELOPED%20BY-Hemang%20Lakhadiya-172554?style=for-the-badge" />
+</p>
+
+<p align="center">
   <a href="https://github.com/Hemang2601">
-    <img src="https://img.shields.io/badge/GitHub-Hemang2601-181717?style=for-the-badge&logo=github" />
+    <img src="https://img.shields.io/badge/GitHub-View%20Developer%20Profile-181717?style=for-the-badge&logo=github" />
+  </a>
+  <a href="https://github.com/Hemang2601/Bill">
+    <img src="https://img.shields.io/badge/Repository-Explore%20Project-2563EB?style=for-the-badge&logo=github" />
   </a>
 </p>
 
-## 📄 License
+## 15 — License & Ownership
 
-Developed for **Shree Shakti Electric**. All rights reserved unless a separate license is provided in this repository.
+Developed for **Shree Shakti Electric**.
+
+All rights reserved unless a separate license is explicitly provided in this repository.
 
 ---
 
 <p align="center">
-  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=18&pause=1200&color=2563EB&center=true&vCenter=true&width=500&lines=Thank+you+for+visiting!;Built+with+Flutter+%E2%9D%A4%EF%B8%8F;Smart+Billing.+Simple+Management." alt="Animated footer" />
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:172554,50:2563EB,100:0EA5E9&height=130&section=footer&text=SHREE%20SHAKTI%20ELECTRIC&fontSize=24&fontColor=ffffff&fontAlignY=55" width="100%" />
 </p>
 
 <p align="center">
-  <strong>⚡ SHREE SHAKTI ELECTRIC</strong><br/>
-  <sub>Smart Billing. Simple Management. Professional Invoices.</sub>
+  <b>SMART BILLING · SIMPLE MANAGEMENT · PROFESSIONAL INVOICES</b>
+  <br/>
+  <sub>Designed with purpose. Built with Flutter. ⚡</sub>
 </p>
