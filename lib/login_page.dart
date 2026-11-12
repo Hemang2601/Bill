@@ -1,380 +1,527 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:ui';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/core.dart';
 import 'database_helper.dart';
 import 'dashboard_page.dart';
 
-// --- 1. BOOT GATE ---
-class AuthGate extends StatelessWidget
-{
-  const AuthGate({super.key});
-
-  @override
-  Widget build(BuildContext context)
-{
-    return FutureBuilder<Map<String, dynamic>>(
-      future: _checkAuthStatus(),
- builder: (context, snapshot)
-{
-if (snapshot.connectionState == ConnectionState.waiting)
-{
-          return const Scaffold(
-            backgroundColor: Colors.white,
- body: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
- children: [
-                  SizedBox(
-                    width: 30, height: 30,
- child: CircularProgressIndicator(
-                      color: Color(0xFF6366F1),
- strokeWidth: 2,
-                    ),
-                  ),
- SizedBox(height: 20),
- Text(
-                    "SECURE ACCESS",
- style: TextStyle(
-                      color: Color(0xFF94A3B8),
- letterSpacing: 3,
- fontSize: 10,
- fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        final bool isLoggedIn = snapshot.data?['isLoggedIn'] ?? false;
-        final String userName = snapshot.data?['userName'] ?? "";
-
-        return isLoggedIn ? DashboardPage(userName: userName) : const LoginPage();
-      },
-    );
-  }
-
-  Future<Map<String, dynamic>> _checkAuthStatus() async
-{
-    final prefs = await SharedPreferences.getInstance();
-    return
-{
-      'isLoggedIn': prefs.getBool('isLoggedIn') ?? false,
-      'userName': prefs.getString('userName') ?? "",
-
-};
-  }
-}
-
-// --- 2. LOGIN PAGE (Fixed Non-Scroll Edition) ---
-class LoginPage extends StatefulWidget
-{
+/// Premium Option D — Mobile Pro Manager Authentication Screen
+/// Strictly preserves SQLite credentials (suresh / 1975, hiren / 3112)
+/// and SharedPreferences session persistence.
+class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMixin
-{
+class _LoginPageState extends State<LoginPage>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _userController = TextEditingController();
-  final TextEditingController _passController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final FocusNode _userFocusNode = FocusNode();
+  final FocusNode _passFocusNode = FocusNode();
 
-  bool _isObscured = true;
   bool _isAuthenticating = false;
+  String? _errorMessage;
+
+  late final AnimationController _animController;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _slideAnimation;
 
   @override
-  void dispose()
-{
-    _userController.dispose();
-    _passController.dispose();
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutCubic,
+    );
+
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0.0, 0.06), end: Offset.zero).animate(
+          CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic),
+        );
+
+    _animController.forward();
+  }
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _userFocusNode.dispose();
+    _passFocusNode.dispose();
+    _animController.dispose();
     super.dispose();
   }
 
-  void _handleLogin() async
-{
-if (!_formKey.currentState!.validate()) return;
-    setState(() => _isAuthenticating = true);
-    await Future.delayed(const Duration(milliseconds: 1000));
+  void _selectManager(String username) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _usernameController.text = username;
+      _errorMessage = null;
+    });
+    _passFocusNode.requestFocus();
+  }
 
-    bool isValid = await DatabaseHelper.instance.validateLogin(
-      _userController.text,
- _passController.text,
-    );
-
-if (isValid)
-{
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isLoggedIn', true);
-      await prefs.setString('userName', _userController.text);
-      _showSuccessDialog();
+  Future<void> _handleLogin() async {
+    // Clear any previous error
+    if (_errorMessage != null) {
+      setState(() => _errorMessage = null);
     }
-else
-{
-      setState(() => _isAuthenticating = false);
-      _showErrorDialog("ACCESS DENIED", "Credentials do not match our secure records.");
+
+    if (!_formKey.currentState!.validate()) {
+      HapticFeedback.lightImpact();
+      return;
+    }
+
+    // Dismiss keyboard
+    FocusScope.of(context).unfocus();
+    setState(() => _isAuthenticating = true);
+
+    try {
+      final username = _usernameController.text.trim();
+      final password = _passwordController.text.trim();
+
+      // Validate against SQLite database
+      final bool isValid = await DatabaseHelper.instance.validateLogin(
+        username,
+        password,
+      );
+
+      if (!mounted) return;
+
+      if (isValid) {
+        // Save session to SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('isLoggedIn', true);
+        await prefs.setString('userName', username);
+
+        HapticFeedback.mediumImpact();
+
+        if (!mounted) return;
+
+        // Smooth fade-and-slide navigation into Dashboard
+        Navigator.of(context).pushReplacement(
+          FadeSlidePageRoute(page: DashboardPage(userName: username)),
+        );
+      } else {
+        HapticFeedback.heavyImpact();
+        setState(() {
+          _isAuthenticating = false;
+          _errorMessage =
+              "Invalid credentials. Please verify your username and PIN.";
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isAuthenticating = false;
+        _errorMessage = "Authentication error. Please try again.";
+      });
     }
   }
 
   @override
-  Widget build(BuildContext context)
-{
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
-
-    return Scaffold(
-      // CRITICAL: This stops the screen from resizing or scrolling when the keyboard appears
-      resizeToAvoidBottomInset: false,
- backgroundColor: const Color(0xFFF8FAFC),
- body: Stack(
-        children: [
-          // Background Decorative Orbs
-          Positioned(top: -150, right: -100, child: _buildOrb(350, const Color(0xFFE0E7FF))),
- Positioned(bottom: -100, left: -50, child: _buildOrb(300, const Color(0xFFF0FDF4))),
-
- SafeArea(
-            child: Center( // Keeps everything centered without scrolling
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32.0),
- child: Form(
-                  key: _formKey,
- child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center, // Center items vertically
- children: [
-                      _buildLogo(),
- const SizedBox(height: 40),
- const Text(
-                        "SHREE SHAKTI",
- style: TextStyle(
-                          fontSize: 36,
- fontWeight: FontWeight.w900,
- color: Color(0xFF0F172A),
- letterSpacing: -1.2,
-                        ),
-                      ),
- const Text(
-                        "ELECTRIC SERVICES • ADMIN",
- style: TextStyle(
-                          fontSize: 11,
- color: Color(0xFF6366F1),
- letterSpacing: 2,
- fontWeight: FontWeight.w900,
-                        ),
-                      ),
- const SizedBox(height: 60),
-
- _buildWhiteInput(
-                        controller: _userController,
- label: "MANAGER IDENTITY",
- icon: Icons.person_2_outlined,
-                      ),
- const SizedBox(height: 20),
- _buildWhiteInput(
-                        controller: _passController,
- label: "SECURITY PIN",
- icon: Icons.lock_open_rounded,
- isPassword: true,
-                      ),
- const SizedBox(height: 45),
- _buildActionButton(),
- const SizedBox(height: 40),
- const Text(
-                        "SECURED BY VAULT v4.0",
- style: TextStyle(
-                          color: Color(0xFF94A3B8),
- fontSize: 10,
- fontWeight: FontWeight.w700,
- letterSpacing: 1,
-                        ),
-                      ),
-                    ],
+  Widget build(BuildContext context) {
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: AppColors.background,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20.0,
+                vertical: 24.0,
+              ),
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 440),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildBrandingHeader(),
+                        AppSpacing.gapVxxl,
+                        _buildLoginCard(),
+                        AppSpacing.gapVxxl,
+                        _buildFooter(),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOrb(double size, Color color)
-{
-    return Container(
-      width: size,
- height: size,
- decoration: BoxDecoration(
-        shape: BoxShape.circle,
- color: color,
-      ),
- child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
- child: Container(color: Colors.transparent),
-      ),
-    );
-  }
-
-  Widget _buildLogo()
-{
-    return Container(
-      padding: const EdgeInsets.all(22),
- decoration: BoxDecoration(
-        color: Colors.white,
- shape: BoxShape.circle,
- boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
- blurRadius: 40,
- offset: const Offset(0, 20),
-          ),
-        ],
-      ),
- child: const Icon(Icons.bolt_rounded, size: 55, color: Color(0xFFFBBF24)),
-    );
-  }
-
-  Widget _buildWhiteInput({
-    required TextEditingController controller,
- required String label,
- required IconData icon,
- bool isPassword = false,
-  })
-{
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
- borderRadius: BorderRadius.circular(20),
- border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
- boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
- blurRadius: 15,
- offset: const Offset(0, 8),
-          ),
-        ],
-      ),
- child: TextFormField(
-        controller: controller,
- obscureText: isPassword ? _isObscured : false,
- validator: (val) => val!.isEmpty ? "Required" : null,
- style: const TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.w700),
- decoration: InputDecoration(
-          labelText: label,
- labelStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w800),
- prefixIcon: Icon(icon, color: const Color(0xFF6366F1), size: 20),
- suffixIcon: isPassword ? IconButton(
-            icon: Icon(_isObscured ? Icons.visibility_rounded : Icons.visibility_off_rounded, color: Colors.grey, size: 18),
- onPressed: () => setState(() => _isObscured = !_isObscured),
-          ) : null,
- border: InputBorder.none,
- contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         ),
       ),
     );
   }
 
-  Widget _buildActionButton()
-{
-    return Container(
-      width: double.infinity,
- height: 65,
- decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
- color: const Color(0xFF0F172A),
- boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0F172A).withOpacity(0.2),
- blurRadius: 25,
- offset: const Offset(0, 12),
+  Widget _buildBrandingHeader() {
+    return Column(
+      children: [
+        // Company Emblem with Electric Glow Halo
+        Container(
+          width: 76,
+          height: 76,
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.border, width: 1.5),
+            boxShadow: [
+              ...AppShadows.card,
+              BoxShadow(
+                color: AppColors.primary.withAlpha(50),
+                blurRadius: 20,
+                spreadRadius: 2,
+              ),
+            ],
           ),
-        ],
-      ),
- child: ElevatedButton(
-        onPressed: _isAuthenticating ? null : _handleLogin,
- style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
- shadowColor: Colors.transparent,
- shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        ),
- child: _isAuthenticating
-? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-: const Text(
-          "ACCESS TERMINAL",
- style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 1.5),
-        ),
-      ),
-    );
-  }
-
-  void _showSuccessDialog()
-{
-    showGeneralDialog(
-      context: context,
- barrierDismissible: false,
- transitionDuration: const Duration(milliseconds: 400),
- pageBuilder: (ctx, a1, a2) => const SizedBox(),
- transitionBuilder: (ctx, a1, a2, child)
-{
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
- child: ScaleTransition(
-            scale: CurvedAnimation(parent: a1, curve: Curves.easeOutBack),
- child: AlertDialog(
-              backgroundColor: Colors.white,
- shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(35)),
- content: Column(
-                mainAxisSize: MainAxisSize.min,
- children: [
-                  const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 80),
- const SizedBox(height: 20),
- const Text("WELCOME BACK", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Color(0xFF0F172A))),
- const SizedBox(height: 10),
- const Text("Authentication verified successfully.", textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
- const SizedBox(height: 30),
- const LinearProgressIndicator(color: Color(0xFF10B981), backgroundColor: Color(0xFFF1F5F9)),
-                ],
+          child: Center(
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.electric_bolt_rounded,
+                  color: AppColors.amberLight,
+                  size: 32,
+                ),
               ),
             ),
           ),
-        );
-      },
-    );
-
-    Future.delayed(const Duration(milliseconds: 1800), ()
-{
-if (mounted)
-{
-        Navigator.pop(context);
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 800),
- pageBuilder: (c, a, sa) => DashboardPage(userName: _userController.text),
- transitionsBuilder: (c, a, sa, child) => FadeTransition(opacity: a, child: child),
+        ),
+        AppSpacing.gapVm,
+        Text(
+          "SHREE SHAKTI",
+          textAlign: TextAlign.center,
+          style: AppTypography.displayMedium.copyWith(
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
+            color: AppColors.textPrimary,
           ),
-        );
-      }
-    }
-);
+        ),
+        AppSpacing.gapVxxs,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.primarySoft,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.border, width: 1.0),
+          ),
+          child: Text(
+            "ELECTRIC SERVICE • BILLING SYSTEM",
+            style: AppTypography.labelCaps.copyWith(
+              color: AppColors.primaryLight,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
-  void _showErrorDialog(String title, String message)
-{
-    showDialog(
-      context: context,
- builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
- shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
- title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFFEF4444), fontSize: 16)),
- content: Text(message, style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
- actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
- child: const Text("TRY AGAIN", style: TextStyle(color: Color(0xFF6366F1), fontWeight: FontWeight.bold)),
-          ),
-        ],
+  Widget _buildLoginCard() {
+    final currentUsername = _usernameController.text.trim().toLowerCase();
+
+    return AppCard(
+      padding: const EdgeInsets.all(26.0),
+      backgroundColor: AppColors.surface,
+      borderColor: AppColors.border,
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Manager Sign In",
+                        style: AppTypography.headingLarge.copyWith(
+                          fontSize: 19,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        "Select account or enter terminal credentials",
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceSubtle,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border, width: 1),
+                  ),
+                  child: const Icon(
+                    Icons.security_rounded,
+                    color: AppColors.primaryLight,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+            AppSpacing.gapVl,
+
+            // Quick Manager Select Chips
+            Row(
+              children: [
+                Expanded(
+                  child: _buildManagerChip(
+                    name: "Suresh",
+                    role: "Partner",
+                    isSelected: currentUsername == "suresh",
+                    onTap: () => _selectManager("suresh"),
+                  ),
+                ),
+                AppSpacing.gapHm,
+                Expanded(
+                  child: _buildManagerChip(
+                    name: "Hiren",
+                    role: "Partner",
+                    isSelected: currentUsername == "hiren",
+                    onTap: () => _selectManager("hiren"),
+                  ),
+                ),
+              ],
+            ),
+            AppSpacing.gapVl,
+
+            // Error Message Banner (if any)
+            if (_errorMessage != null) ...[
+              Container(
+                padding: const EdgeInsets.all(12.0),
+                decoration: BoxDecoration(
+                  color: AppColors.dangerSoft,
+                  borderRadius: AppRadius.m,
+                  border: Border.all(color: AppColors.dangerBorder),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      color: AppColors.danger,
+                      size: 20,
+                    ),
+                    AppSpacing.gapHs,
+                    Expanded(
+                      child: Text(
+                        _errorMessage!,
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.danger,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              AppSpacing.gapVl,
+            ],
+
+            // Username Field
+            AppTextField(
+              controller: _usernameController,
+              focusNode: _userFocusNode,
+              label: "MANAGER USERNAME",
+              hint: "e.g. suresh or hiren",
+              prefixIcon: Icons.person_outline_rounded,
+              textCapitalization: TextCapitalization.none,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return "Please enter your manager username";
+                }
+                return null;
+              },
+            ),
+            AppSpacing.gapVl,
+
+            // Password Field
+            AppTextField(
+              controller: _passwordController,
+              focusNode: _passFocusNode,
+              label: "SECURITY PIN / PASSWORD",
+              hint: "Enter security PIN",
+              prefixIcon: Icons.lock_outline_rounded,
+              isPassword: true,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return "Please enter your PIN or password";
+                }
+                return null;
+              },
+            ),
+            AppSpacing.gapVxxl,
+
+            // Submit Button
+            AppButton(
+              label: "SIGN IN TO TERMINAL",
+              icon: Icons.login_rounded,
+              isFullWidth: true,
+              size: AppButtonSize.large,
+              isLoading: _isAuthenticating,
+              onPressed: _isAuthenticating ? null : _handleLogin,
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildManagerChip({
+    required String name,
+    required String role,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primarySoft : AppColors.surfaceSubtle,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppColors.primaryLight : AppColors.border,
+            width: isSelected ? 1.5 : 1.0,
+          ),
+          boxShadow: isSelected ? AppShadows.primaryGlow : null,
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 14,
+              backgroundColor: isSelected
+                  ? AppColors.primary
+                  : AppColors.surfaceMuted,
+              child: Text(
+                name[0].toUpperCase(),
+                style: TextStyle(
+                  color: isSelected ? Colors.white : AppColors.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    name,
+                    style: AppTypography.labelLarge.copyWith(
+                      color: isSelected
+                          ? AppColors.textPrimary
+                          : AppColors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    role,
+                    style: AppTypography.bodySmall.copyWith(
+                      fontSize: 10,
+                      color: isSelected
+                          ? AppColors.primaryLight
+                          : AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              const Icon(
+                Icons.check_circle_rounded,
+                color: AppColors.primaryLight,
+                size: 16,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.shield_outlined,
+              size: 14,
+              color: AppColors.textMuted,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                "SECURE OFFLINE VAULT • SQLITE ENFORCED",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.labelCaps.copyWith(
+                  color: AppColors.textMuted,
+                  fontSize: 10,
+                ),
+              ),
+            ),
+          ],
+        ),
+        AppSpacing.gapVxs,
+        Text(
+          "Authorized Accounts: Suresh Lakhadiya • Hiren Lakhadiya",
+          textAlign: TextAlign.center,
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.textMuted,
+            fontSize: 11,
+          ),
+        ),
+      ],
     );
   }
 }

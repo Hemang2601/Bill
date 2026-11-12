@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:intl/intl.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -20,7 +21,8 @@ class DatabaseHelper {
     return await openDatabase(
       path,
       version: 3,
-      onConfigure: _onConfigure, // CRITICAL: Enables Foreign Keys for Cascade Delete
+      onConfigure:
+          _onConfigure, // CRITICAL: Enables Foreign Keys for Cascade Delete
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -73,14 +75,20 @@ class DatabaseHelper {
 
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      await db.execute('CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, billNumber TEXT, customerName TEXT, phoneNumber TEXT, date TEXT, totalAmount REAL)');
-      await db.execute('CREATE TABLE IF NOT EXISTS invoice_items (id INTEGER PRIMARY KEY AUTOINCREMENT, invoiceId INTEGER, itemName TEXT, qty REAL, price REAL, FOREIGN KEY (invoiceId) REFERENCES invoices (id) ON DELETE CASCADE)');
+      await db.execute(
+        'CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, billNumber TEXT, customerName TEXT, phoneNumber TEXT, date TEXT, totalAmount REAL)',
+      );
+      await db.execute(
+        'CREATE TABLE IF NOT EXISTS invoice_items (id INTEGER PRIMARY KEY AUTOINCREMENT, invoiceId INTEGER, itemName TEXT, qty REAL, price REAL, FOREIGN KEY (invoiceId) REFERENCES invoices (id) ON DELETE CASCADE)',
+      );
     }
 
     if (oldVersion < 3) {
       // Logic to add pdfPath column to existing DB
       var tableInfo = await db.rawQuery('PRAGMA table_info(invoices)');
-      bool columnExists = tableInfo.any((column) => column['name'] == 'pdfPath');
+      bool columnExists = tableInfo.any(
+        (column) => column['name'] == 'pdfPath',
+      );
       if (!columnExists) {
         await db.execute('ALTER TABLE invoices ADD COLUMN pdfPath TEXT');
       }
@@ -89,7 +97,10 @@ class DatabaseHelper {
 
   // --- INVOICE OPERATIONS ---
 
-  Future<int> saveCompleteInvoice(Map<String, dynamic> invoice, List<Map<String, dynamic>> items) async {
+  Future<int> saveCompleteInvoice(
+    Map<String, dynamic> invoice,
+    List<Map<String, dynamic>> items,
+  ) async {
     final db = await instance.database;
     return await db.transaction((txn) async {
       int invoiceId = await txn.insert('invoices', invoice);
@@ -105,6 +116,32 @@ class DatabaseHelper {
     });
   }
 
+  /// Generates a sequential bill number in the standard SE-yyMM-XXX format
+  Future<String> generateNextBillNumber() async {
+    final db = await database;
+    final now = DateTime.now();
+    final prefix = "SE-${DateFormat('yyMM').format(now)}";
+
+    try {
+      final res = await db.rawQuery(
+        'SELECT billNumber FROM invoices WHERE billNumber LIKE ? ORDER BY id DESC LIMIT 1',
+        ['$prefix%'],
+      );
+      if (res.isNotEmpty) {
+        final lastNumStr = res.first['billNumber']?.toString() ?? '';
+        final parts = lastNumStr.split('-');
+        if (parts.length >= 3) {
+          final lastInt = int.tryParse(parts[2]);
+          if (lastInt != null && lastInt >= 100) {
+            return "$prefix-${lastInt + 1}";
+          }
+        }
+      }
+    } catch (_) {}
+
+    return "$prefix-${100 + (now.second % 890 + 1)}";
+  }
+
   Future<List<Map<String, dynamic>>> getAllInvoices() async {
     final db = await instance.database;
     return await db.query('invoices', orderBy: 'id DESC');
@@ -112,40 +149,43 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> getInvoiceItems(int invoiceId) async {
     final db = await instance.database;
-    return await db.query('invoice_items', where: 'invoiceId = ?', whereArgs: [invoiceId]);
+    return await db.query(
+      'invoice_items',
+      where: 'invoiceId = ?',
+      whereArgs: [invoiceId],
+    );
   }
 
   /// Deletes an invoice.
   /// Because of ON DELETE CASCADE, this also deletes all items in 'invoice_items'.
   Future<int> deleteInvoice(int id) async {
     final db = await instance.database;
-    return await db.delete(
-      'invoices',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return await db.delete('invoices', where: 'id = ?', whereArgs: [id]);
   }
 
   // --- EDIT / UPDATE INVOICE OPERATIONS ---
 
   /// Updates an existing invoice and its items safely using a transaction
-  Future<void> updateCompleteInvoice({required Map<String, dynamic> invoiceData, required List<Map<String, dynamic>> items}) async {
+  Future<void> updateCompleteInvoice({
+    required Map<String, dynamic> invoiceData,
+    required List<Map<String, dynamic>> items,
+  }) async {
     final db = await instance.database;
 
     await db.transaction((txn) async {
       // 1. Update the main invoice table
       await txn.update(
-          'invoices',
-          invoiceData,
-          where: 'id = ?',
-          whereArgs: [invoiceData['id']]
+        'invoices',
+        invoiceData,
+        where: 'id = ?',
+        whereArgs: [invoiceData['id']],
       );
 
       // 2. Delete old items linked to this invoice
       await txn.delete(
-          'invoice_items',
-          where: 'invoiceId = ?',
-          whereArgs: [invoiceData['id']]
+        'invoice_items',
+        where: 'invoiceId = ?',
+        whereArgs: [invoiceData['id']],
       );
 
       // 3. Insert the updated items
@@ -174,12 +214,20 @@ class DatabaseHelper {
 
   Future<int> addManager(String username, String password) async {
     final db = await instance.database;
-    return await db.insert('managers', {'username': username, 'password': password});
+    return await db.insert('managers', {
+      'username': username,
+      'password': password,
+    });
   }
 
   Future<int> updatePassword(String username, String newPassword) async {
     final db = await instance.database;
-    return await db.update('managers', {'password': newPassword}, where: 'username = ?', whereArgs: [username]);
+    return await db.update(
+      'managers',
+      {'password': newPassword},
+      where: 'username = ?',
+      whereArgs: [username],
+    );
   }
 
   Future<int> deleteManager(int id) async {
@@ -190,10 +238,40 @@ class DatabaseHelper {
   // --- STATISTICS METHODS ---
   Future<Map<String, dynamic>> getInvoiceStats() async {
     final db = await instance.database;
-    var stats = await db.rawQuery('SELECT COUNT(*) as totalCount, SUM(totalAmount) as totalRev FROM invoices');
+    var stats = await db.rawQuery(
+      'SELECT COUNT(*) as totalCount, SUM(totalAmount) as totalRev FROM invoices',
+    );
     return {
       'totalCount': stats.first['totalCount'] ?? 0,
       'totalRev': stats.first['totalRev'] ?? 0.0,
+    };
+  }
+
+  /// Calculates real-time financial and ledger metrics for the Dashboard
+  Future<Map<String, dynamic>> getDashboardMetrics() async {
+    final db = await instance.database;
+    final stats = await db.rawQuery(
+      'SELECT COUNT(*) as totalCount, COALESCE(SUM(totalAmount), 0.0) as totalRev, '
+      'COUNT(DISTINCT CASE WHEN customerName IS NOT NULL AND customerName != "" AND customerName != "CASH CUSTOMER" THEN customerName END) as customerCount '
+      'FROM invoices',
+    );
+
+    final allInvoices = await db.query('invoices');
+    final now = DateTime.now();
+    double currentMonthRev = 0.0;
+    for (final inv in allInvoices) {
+      final dateStr = inv['date']?.toString() ?? '';
+      final dt = parseDateRobust(dateStr);
+      if (dt != null && dt.year == now.year && dt.month == now.month) {
+        currentMonthRev += (inv['totalAmount'] as num?)?.toDouble() ?? 0.0;
+      }
+    }
+
+    return {
+      'totalCount': (stats.first['totalCount'] as num?)?.toInt() ?? 0,
+      'totalRev': (stats.first['totalRev'] as num?)?.toDouble() ?? 0.0,
+      'currentMonthRev': currentMonthRev,
+      'customerCount': (stats.first['customerCount'] as num?)?.toInt() ?? 0,
     };
   }
 
@@ -210,13 +288,23 @@ class DatabaseHelper {
     } catch (_) {
       try {
         final cleanDate = dateStr.trim().split(' ')[0];
-        final parts = cleanDate.contains('/') ? cleanDate.split('/') : cleanDate.split('-');
+        final parts = cleanDate.contains('/')
+            ? cleanDate.split('/')
+            : cleanDate.split('-');
         if (parts.length >= 3) {
           // Handle DD/MM/YYYY or YYYY/MM/DD
           if (parts[0].length == 4) {
-            return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+            return DateTime(
+              int.parse(parts[0]),
+              int.parse(parts[1]),
+              int.parse(parts[2]),
+            );
           } else {
-            return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+            return DateTime(
+              int.parse(parts[2]),
+              int.parse(parts[1]),
+              int.parse(parts[0]),
+            );
           }
         }
       } catch (_) {}
@@ -238,19 +326,18 @@ class DatabaseHelper {
     if (searchQuery.isNotEmpty) {
       rawResults = await db.query(
         'invoices',
-        where: 'customerName LIKE ? OR billNumber LIKE ?',
-        whereArgs: ['%$searchQuery%', '%$searchQuery%'],
+        where: 'customerName LIKE ? OR billNumber LIKE ? OR phoneNumber LIKE ?',
+        whereArgs: ['%$searchQuery%', '%$searchQuery%', '%$searchQuery%'],
         orderBy: 'id DESC',
       );
     } else {
-      rawResults = await db.query(
-        'invoices',
-        orderBy: 'id DESC',
-      );
+      rawResults = await db.query('invoices', orderBy: 'id DESC');
     }
 
     // Convert to modifiable list
-    List<Map<String, dynamic>> results = List<Map<String, dynamic>>.from(rawResults);
+    List<Map<String, dynamic>> results = List<Map<String, dynamic>>.from(
+      rawResults,
+    );
 
     // 2. Filter by Dates in Dart (only if dates are provided)
     if (startDate != null && endDate != null) {
@@ -261,7 +348,11 @@ class DatabaseHelper {
 
         // Strip time for clean day-to-day comparison
         DateTime cleanInv = DateTime(invDate.year, invDate.month, invDate.day);
-        DateTime cleanStart = DateTime(startDate.year, startDate.month, startDate.day);
+        DateTime cleanStart = DateTime(
+          startDate.year,
+          startDate.month,
+          startDate.day,
+        );
         DateTime cleanEnd = DateTime(endDate.year, endDate.month, endDate.day);
 
         return !cleanInv.isBefore(cleanStart) && !cleanInv.isAfter(cleanEnd);
@@ -270,8 +361,10 @@ class DatabaseHelper {
 
     // 3. Final Sort (Safety net to ensure Date-based descending order)
     results.sort((a, b) {
-      DateTime dateA = parseDateRobust(a['date']?.toString() ?? "") ?? DateTime(1970);
-      DateTime dateB = parseDateRobust(b['date']?.toString() ?? "") ?? DateTime(1970);
+      DateTime dateA =
+          parseDateRobust(a['date']?.toString() ?? "") ?? DateTime(1970);
+      DateTime dateB =
+          parseDateRobust(b['date']?.toString() ?? "") ?? DateTime(1970);
 
       // Compare dates; if dates are equal, compare IDs to keep newest on top
       int dateCompare = dateB.compareTo(dateA);

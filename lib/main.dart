@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // Make sure this is in pubspec.yaml
+import 'package:shared_preferences/shared_preferences.dart';
+import 'core/core.dart';
 import 'login_page.dart';
 import 'dashboard_page.dart';
+import 'splash_screen.dart';
 
 void main() async {
-  // --- CRITICAL ADDITION ---
   // Required for local storage and database initialization
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -12,29 +13,21 @@ void main() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool showSplash;
+  const MyApp({super.key, this.showSplash = true});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Shree Shakti Electric',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1E40AF),
-          primary: const Color(0xFF1E40AF),
-        ),
-        useMaterial3: true,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),
-      // CHANGE: Use AuthGate instead of LoginPage
-      home: const AuthGate(),
+      theme: AppTheme.lightTheme,
+      home: showSplash ? const SplashScreen() : const AuthGate(),
     );
   }
 }
 
-// --- NEW AUTH GATE CLASS ---
-// This checks if a user is already logged in before showing a screen
+/// Centralized AuthGate checking session state before routing
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -43,17 +36,16 @@ class AuthGate extends StatelessWidget {
     return FutureBuilder<Map<String, dynamic>>(
       future: _checkSession(),
       builder: (context, snapshot) {
-        // Show a blank screen with a loader while checking memory
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator(color: Color(0xFF1E40AF))),
+            backgroundColor: AppColors.background,
+            body: AppLoading(message: "Verifying Session..."),
           );
         }
 
         final bool isLoggedIn = snapshot.data?['isLoggedIn'] ?? false;
         final String userName = snapshot.data?['userName'] ?? "";
 
-        // If true, jump straight to Dashboard. If false, show Login.
         if (isLoggedIn && userName.isNotEmpty) {
           return DashboardPage(userName: userName);
         } else {
@@ -63,7 +55,6 @@ class AuthGate extends StatelessWidget {
     );
   }
 
-  // Reads the saved login data from the phone's disk
   Future<Map<String, dynamic>> _checkSession() async {
     final prefs = await SharedPreferences.getInstance();
     return {

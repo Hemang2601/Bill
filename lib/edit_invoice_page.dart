@@ -1,17 +1,15 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:flutter/services.dart' show rootBundle;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'database_helper.dart';
-import 'dart:ui'; // For ImageFilter.blur
-import 'package:flutter/services.dart'; // For HapticFeedback
+import 'package:path_provider/path_provider.dart';
 
+import 'core/core.dart';
+import 'database_helper.dart';
+import 'services/invoice_pdf_service.dart';
+
+/// Premium, enterprise-grade invoice editing screen for Shree Shakti Electric
+/// Preserves original invoice ID, bill number, PDF paths, and updates SQLite in a transaction.
 class EditInvoicePage extends StatefulWidget {
   final Map<String, dynamic> existingInvoice;
 
@@ -21,725 +19,1421 @@ class EditInvoicePage extends StatefulWidget {
   State<EditInvoicePage> createState() => _EditInvoicePageState();
 }
 
-class _EditInvoicePageState extends State<EditInvoicePage> {
-  // --- BRANDING COLORS ---
-  final Color royalBlue = const Color(0xFF1E40AF);
-  final Color navyBlue = const Color(0xFF1E3A8A);
-  final Color skyBlue = const Color(0xFF3B82F6);
-  final Color lightBg = const Color(0xFFF1F5F9);
-  final Color textColor = const Color(0xFF0F172A);
-
+class _EditInvoicePageState extends State<EditInvoicePage>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _customerName = TextEditingController();
   final TextEditingController _phoneNumber = TextEditingController();
   final TextEditingController _dateController = TextEditingController();
 
   final FocusNode _customerFocus = FocusNode();
   final FocusNode _phoneFocus = FocusNode();
+  final ScrollController _scrollController = ScrollController();
 
-  List<Map<String, dynamic>> _items = [];
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+
+  final List<Map<String, dynamic>> _items = [];
   late String _billNumber;
   bool _isLoadingItems = true;
+  bool _isUpdating = false;
+  bool _hasUnsavedChanges = false;
+
+  final List<Map<String, String>> _catalogSuggestions = const [
+    {"name": "Switch 6A", "price": "45"},
+    {"name": "Socket 6A", "price": "85"},
+    {"name": "LED Bulb 9W", "price": "120"},
+    {"name": "1.5mm Wire Coil", "price": "1200"},
+    {"name": "Fan Regulator", "price": "250"},
+    {"name": "MCB 16A Single", "price": "180"},
+    {"name": "LED Batten 20W", "price": "280"},
+    {"name": "Anchor Modular Plate", "price": "95"},
+  ];
 
   @override
   void initState() {
     super.initState();
-    // Pre-fill general data
-    _billNumber = widget.existingInvoice['billNumber'] ?? "UNKNOWN";
-    _dateController.text = widget.existingInvoice['date'] ?? DateFormat('dd MMM yyyy').format(DateTime.now());
-    _customerName.text = widget.existingInvoice['customerName'] ?? "";
-    _phoneNumber.text = widget.existingInvoice['phoneNumber'] ?? "";
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOutCubic,
+    );
+
+    // Prepopulate existing invoice metadata
+    _billNumber = widget.existingInvoice['billNumber']?.toString() ?? "UNKNOWN";
+    _dateController.text =
+        widget.existingInvoice['date']?.toString() ??
+        DateFormat('dd MMM yyyy').format(DateTime.now());
+    _customerName.text =
+        widget.existingInvoice['customerName']?.toString() ?? "";
+    _phoneNumber.text = widget.existingInvoice['phoneNumber']?.toString() ?? "";
+
+    _customerName.addListener(_markDirty);
+    _phoneNumber.addListener(_markDirty);
 
     _loadExistingItems();
   }
 
+  void _markDirty() {
+    if (!_hasUnsavedChanges) {
+      _hasUnsavedChanges = true;
+    }
+  }
+
   Future<void> _loadExistingItems() async {
     try {
-      // Fetch the items belonging to this invoice from the database
-      final int invoiceId = widget.existingInvoice['id'];
-      final fetchedItems = await DatabaseHelper.instance.getInvoiceItems(invoiceId);
+      final invoiceId = (widget.existingInvoice['id'] as num?)?.toInt() ?? 0;
+      final fetchedItems = await DatabaseHelper.instance.getInvoiceItems(
+        invoiceId,
+      );
 
+      if (!mounted) return;
       setState(() {
         for (var item in fetchedItems) {
           _items.add({
-            "name": TextEditingController(text: item['itemName']),
-            "qty": TextEditingController(text: item['qty'].toString()),
-            "price": TextEditingController(text: item['price'].toString()),
-            "isEditable": false, // Keep them locked until the user taps edit
+            "name": TextEditingController(
+              text: item['itemName']?.toString() ?? '',
+            ),
+            "qty": TextEditingController(
+              text: (item['qty'] as num?)?.toString() ?? '1',
+            ),
+            "price": TextEditingController(
+              text: (item['price'] as num?)?.toString() ?? '0',
+            ),
+            "nameFocus": FocusNode(),
+            "qtyFocus": FocusNode(),
+            "priceFocus": FocusNode(),
           });
         }
-        // If somehow there are no items, add a blank one
-        if (_items.isEmpty) _addNewItem();
-
+        if (_items.isEmpty) {
+          _addNewItem(autoScroll: false, autoFocus: false);
+        }
         _isLoadingItems = false;
+        _hasUnsavedChanges = false;
       });
-    } catch (e) {
-      setState(() => _isLoadingItems = false);
-      if (_items.isEmpty) _addNewItem();
+      _fadeController.forward();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        if (_items.isEmpty) {
+          _addNewItem(autoScroll: false, autoFocus: false);
+        }
+        _isLoadingItems = false;
+        _hasUnsavedChanges = false;
+      });
+      _fadeController.forward();
     }
   }
 
   @override
   void dispose() {
+    _fadeController.dispose();
+    _scrollController.dispose();
     _customerName.dispose();
     _phoneNumber.dispose();
     _dateController.dispose();
     _customerFocus.dispose();
     _phoneFocus.dispose();
+
+    for (final item in _items) {
+      (item['name'] as TextEditingController?)?.dispose();
+      (item['qty'] as TextEditingController?)?.dispose();
+      (item['price'] as TextEditingController?)?.dispose();
+      (item['nameFocus'] as FocusNode?)?.dispose();
+      (item['qtyFocus'] as FocusNode?)?.dispose();
+      (item['priceFocus'] as FocusNode?)?.dispose();
+    }
     super.dispose();
   }
 
-  void _showBestExitAlert() {
-    FocusManager.instance.primaryFocus?.unfocus();
-    HapticFeedback.heavyImpact(); // Physical vibration for "Danger" awareness
+  void _addNewItem({
+    String name = "",
+    String price = "0",
+    String qty = "1",
+    bool autoScroll = true,
+    bool autoFocus = false,
+  }) {
+    final nameController = TextEditingController(text: name);
+    final qtyController = TextEditingController(text: qty);
+    final priceController = TextEditingController(text: price);
+    final nameFocus = FocusNode();
+    final qtyFocus = FocusNode();
+    final priceFocus = FocusNode();
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(44)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 50,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              const SizedBox(height: 35),
+    setState(() {
+      _items.add({
+        "name": nameController,
+        "qty": qtyController,
+        "price": priceController,
+        "nameFocus": nameFocus,
+        "qtyFocus": qtyFocus,
+        "priceFocus": priceFocus,
+      });
+      _hasUnsavedChanges = true;
+    });
 
-              // --- PRO LAYERED ICON ---
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  Container(width: 100, height: 100, decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle)),
-                  Container(width: 75, height: 75, decoration: BoxDecoration(color: Colors.red.shade100, shape: BoxShape.circle)),
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                    child: const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 38),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 30),
+    if (autoScroll) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      });
+    }
 
-              const Text(
-                "Discard Edits?",
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Color(0xFF1A1A1A), letterSpacing: -0.8),
-              ),
-              const SizedBox(height: 15),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Text(
-                  "You have modified this invoice. Leaving now will cancel all current edits and keep the old data.",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 15, height: 1.5),
-                ),
-              ),
-              const SizedBox(height: 40),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFF1F5F9),
-                        foregroundColor: const Color(0xFF334155),
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.grey.shade200)),
-                      ),
-                      child: const Text("RESUME", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1.1)),
-                    ),
-                  ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context); // Close Alert
-                        Navigator.pop(context); // Exit Page
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F172A), // Pro Navy
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      ),
-                      child: const Text("EXIT", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1.1)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    if (autoFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        nameFocus.requestFocus();
+      });
+    }
   }
 
-  void _addNewItem({String name = "", String price = "0"}) {
+  void _removeItem(int index) {
+    if (index < 0 || index >= _items.length) return;
     setState(() {
-      for (var item in _items) {
-        item['isEditable'] = false;
-      }
-      _items.add({
-        "name": TextEditingController(text: name),
-        "qty": TextEditingController(text: "1"),
-        "price": TextEditingController(text: price),
-        "isEditable": true,
-      });
+      final removed = _items.removeAt(index);
+      (removed['name'] as TextEditingController?)?.dispose();
+      (removed['qty'] as TextEditingController?)?.dispose();
+      (removed['price'] as TextEditingController?)?.dispose();
+      (removed['nameFocus'] as FocusNode?)?.dispose();
+      (removed['qtyFocus'] as FocusNode?)?.dispose();
+      (removed['priceFocus'] as FocusNode?)?.dispose();
+      _hasUnsavedChanges = true;
     });
   }
 
-  double get _total => _items.fold(0, (sum, item) {
-    double q = double.tryParse(item['qty'].text) ?? 0;
-    double p = double.tryParse(item['price'].text) ?? 0;
-    return sum + (q * p);
-  });
+  void _onSelectCatalogItem(String name, String price) {
+    HapticFeedback.lightImpact();
+    if (_items.isNotEmpty) {
+      final lastItem = _items.last;
+      final lastName = (lastItem['name'] as TextEditingController).text.trim();
+      final lastPrice = (lastItem['price'] as TextEditingController).text
+          .trim();
+      if (lastName.isEmpty && (lastPrice.isEmpty || lastPrice == "0")) {
+        setState(() {
+          (lastItem['name'] as TextEditingController).text = name;
+          (lastItem['price'] as TextEditingController).text = price;
+          _hasUnsavedChanges = true;
+        });
+        (lastItem['qtyFocus'] as FocusNode?)?.requestFocus();
+        return;
+      }
+    }
+    _addNewItem(name: name, price: price, autoScroll: true, autoFocus: false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_items.isNotEmpty) {
+        (_items.last['qtyFocus'] as FocusNode?)?.requestFocus();
+      }
+    });
+  }
 
-  // --- MODERN SUCCESS DIALOG ---
-  void _showSuccessDialog(File file, Uint8List pdfBytes) {
-    showDialog(
+  double get _subtotal {
+    return _items.fold(0.0, (sum, item) {
+      final q = (item['qty'] is TextEditingController)
+          ? (double.tryParse((item['qty'] as TextEditingController).text) ??
+                0.0)
+          : (double.tryParse(item['qty']?.toString() ?? '0') ?? 0.0);
+      final p = (item['price'] is TextEditingController)
+          ? (double.tryParse((item['price'] as TextEditingController).text) ??
+                0.0)
+          : (double.tryParse(item['price']?.toString() ?? '0') ?? 0.0);
+      return sum + (q * p);
+    });
+  }
+
+  int get _validItemsCount {
+    return _items.where((item) {
+      final name = (item['name'] as TextEditingController).text.trim();
+      final price =
+          double.tryParse((item['price'] as TextEditingController).text) ?? 0.0;
+      return name.isNotEmpty || price > 0;
+    }).length;
+  }
+
+  double get _totalQuantity {
+    return _items.fold(0.0, (sum, item) {
+      final q = (item['qty'] is TextEditingController)
+          ? (double.tryParse((item['qty'] as TextEditingController).text) ??
+                0.0)
+          : 0.0;
+      return sum + q;
+    });
+  }
+
+  Future<bool> _handleAbandonCheck() async {
+    if (!_hasUnsavedChanges) {
+      return true;
+    }
+
+    final bool? confirm = await AppDialog.showDiscardChangesConfirmation(
       context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
-                  child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 60),
-                ),
-                const SizedBox(height: 20),
-                Text("Invoice Updated!", style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: navyBlue)),
-                const SizedBox(height: 8),
-                Text("The PDF and database have been updated.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                const SizedBox(height: 25),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _dialogBtn(
-                        label: "SHARE PDF",
-                        icon: Icons.share_rounded,
-                        color: skyBlue,
-                        onTap: () => Share.shareXFiles([XFile(file.path)], text: 'Updated Invoice from Shree Shakti Electric'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _dialogBtn(
-                        label: "VIEW / PRINT",
-                        icon: Icons.picture_as_pdf_rounded,
-                        color: Colors.redAccent,
-                        onTap: () async {
-                          await Printing.layoutPdf(onLayout: (format) async => pdfBytes, name: "Invoice_$_billNumber");
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 25),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context); // Close Dialog
-                      Navigator.pop(context, true); // Go back to HistoryPage and trigger refresh
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: navyBlue,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text("FINISH & EXIT", style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
+      title: "Discard Edits?",
+      confirmLabel: "DISCARD EDITS",
+    );
+
+    return confirm == true;
+  }
+
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime now = DateTime.now();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.primary,
+              onPrimary: Colors.white,
+              surface: AppColors.surface,
+              onSurface: AppColors.textPrimary,
             ),
           ),
+          child: child!,
         );
       },
     );
+
+    if (picked != null) {
+      setState(() {
+        _dateController.text = DateFormat('dd MMM yyyy').format(picked);
+        _hasUnsavedChanges = true;
+      });
+    }
   }
 
-  Widget _dialogBtn({required String label, required IconData icon, required Color color, required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(15),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 15),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: color.withOpacity(0.2)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color),
-            const SizedBox(height: 5),
-            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 10)),
-          ],
-        ),
-      ),
-    );
+  void _showErrorSnackbar(String message) {
+    if (!mounted) return;
+    AppNotification.showError(context, message);
   }
 
-  // --- IMPROVED PROCESS ENGINE (EDIT MODE) ---
-  Future<void> _processInvoice() async {
-    if (_items.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please add items before saving")));
+  // --- PROCESS UPDATE ENGINE ---
+  Future<void> _processUpdate() async {
+    if (_isUpdating) return;
+
+    final validItems = _items.where((item) {
+      final name = (item['name'] as TextEditingController).text.trim();
+      final qty =
+          double.tryParse((item['qty'] as TextEditingController).text) ?? 0.0;
+      final price =
+          double.tryParse((item['price'] as TextEditingController).text) ?? 0.0;
+      return name.isNotEmpty || (qty > 0 && price > 0);
+    }).toList();
+
+    if (validItems.isEmpty) {
+      _showErrorSnackbar(
+        "Please ensure at least one line item has a name or rate.",
+      );
       return;
     }
 
-    _showLoading("Regenerating PDF & Updating Database...");
+    setState(() => _isUpdating = true);
+    AppLoading.show(context, message: "Regenerating PDF & Updating Invoice...");
 
     try {
-      // --- STEP 0: Identify User & Load Signature ---
-      final prefs = await SharedPreferences.getInstance();
-      final String loggedInUser = (prefs.getString('userName') ?? "Suresh").toLowerCase();
+      final String finalCustomer = _customerName.text.trim().isEmpty
+          ? "CASH CUSTOMER"
+          : _customerName.text.trim().toUpperCase();
+      final String finalPhone = _phoneNumber.text.trim().isEmpty
+          ? "N/A"
+          : _phoneNumber.text.trim();
 
-      String sigAssetPath = loggedInUser.contains("hiren")
-          ? 'assets/images/hiren.png'
-          : 'assets/images/suresh.png';
-
-      final Uint8List signatureData = (await rootBundle.load(sigAssetPath)).buffer.asUint8List();
-      final pw.MemoryImage signatureImage = pw.MemoryImage(signatureData);
-
-      // --- STEP 1: Data Preparation ---
-      final String finalCustomer = _customerName.text.trim().isEmpty ? "CASH CUSTOMER" : _customerName.text.trim().toUpperCase();
-      final String finalPhone = _phoneNumber.text.trim().isEmpty ? "N/A" : _phoneNumber.text.trim();
-
-      // --- STEP 2: Build PDF Document ---
-      final pdf = pw.Document();
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(35),
-          build: (pw.Context context) => [
-            _buildPdfHeader(),
-            pw.SizedBox(height: 20),
-            pw.Divider(thickness: 1, color: PdfColors.grey300),
-            pw.SizedBox(height: 15),
-            _buildPdfCustomerBox(finalCustomer, finalPhone),
-            pw.SizedBox(height: 25),
-            _buildPdfTable(),
-            _buildPdfSummary(),
-            pw.SizedBox(height: 40),
-            _buildPdfFooter(signatureImage),
-          ],
-        ),
+      // 1. Regenerate PDF bytes using centralized InvoicePdfService
+      final Uint8List pdfBytes = await InvoicePdfService.generateInvoicePdf(
+        billNumber: _billNumber,
+        customerName: finalCustomer,
+        phoneNumber: finalPhone,
+        date: _dateController.text,
+        items: validItems,
+        totalAmount: _subtotal,
       );
 
-      final Uint8List bytes = await pdf.save();
+      // 2. Overwrite existing PDF file safely
+      final String existingPdfPath =
+          widget.existingInvoice['pdfPath']?.toString() ?? '';
+      String targetPath = existingPdfPath;
+      if (targetPath.isEmpty) {
+        Directory? baseDir = await getExternalStorageDirectory();
+        baseDir ??= await getApplicationDocumentsDirectory();
+        targetPath =
+            "${baseDir.path}/Shakti Electric/Invoice_${_billNumber.replaceAll('-', '_')}.pdf";
+      }
 
-      // --- STEP 3: Overwrite Existing File System ---
-      final String existingPdfPath = widget.existingInvoice['pdfPath'];
-      final File file = File(existingPdfPath);
-      await file.writeAsBytes(bytes, flush: true); // Overwrites the exact file safely
+      final File pdfFile = await InvoicePdfService.overwritePdfFile(
+        targetPath: targetPath,
+        billNumber: _billNumber,
+        bytes: pdfBytes,
+      );
 
-      // --- STEP 4: Database Update ---
+      // 3. Update SQLite database in transaction
+      final invoiceId = (widget.existingInvoice['id'] as num?)?.toInt() ?? 0;
       await DatabaseHelper.instance.updateCompleteInvoice(
-          invoiceData: {
-            'id': widget.existingInvoice['id'],
-            'billNumber': _billNumber,
-            'customerName': finalCustomer,
-            'phoneNumber': finalPhone,
-            'date': _dateController.text,
-            'totalAmount': _total,
-            'pdfPath': existingPdfPath,
-          },
-          items: _items.map((item) => {
-            'invoiceId': widget.existingInvoice['id'],
-            'itemName': item['name'].text.trim().isEmpty ? "Electric Item" : item['name'].text.trim(),
-            'qty': double.tryParse(item['qty'].text) ?? 0.0,
-            'price': double.tryParse(item['price'].text) ?? 0.0,
-          }).toList()
+        invoiceData: {
+          'id': invoiceId,
+          'billNumber': _billNumber,
+          'customerName': finalCustomer,
+          'phoneNumber': finalPhone,
+          'date': _dateController.text,
+          'totalAmount': _subtotal,
+          'pdfPath': pdfFile.path,
+        },
+        items: validItems.map((item) {
+          final name = (item['name'] as TextEditingController).text.trim();
+          final qty =
+              double.tryParse((item['qty'] as TextEditingController).text) ??
+              0.0;
+          final price =
+              double.tryParse((item['price'] as TextEditingController).text) ??
+              0.0;
+          return {
+            'invoiceId': invoiceId,
+            'itemName': name.isEmpty ? "Electric Item" : name,
+            'qty': qty,
+            'price': price,
+          };
+        }).toList(),
       );
 
-      if (mounted) Navigator.pop(context); // Close Loading Dialog
-      _showSuccessDialog(file, bytes);
-
+      _hasUnsavedChanges = false;
+      if (mounted) {
+        Navigator.of(
+          context,
+          rootNavigator: true,
+        ).pop(); // dismiss loading dialog
+        _showSuccessDialog(pdfFile, pdfBytes);
+      }
     } catch (e) {
-      if (mounted) Navigator.pop(context);
-      debugPrint("PDF Update Error: $e");
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Critical Error: $e")));
+      if (mounted) {
+        Navigator.of(
+          context,
+          rootNavigator: true,
+        ).pop(); // dismiss loading dialog
+        _showErrorSnackbar("Failed to update invoice: $e");
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUpdating = false);
+      }
     }
   }
 
-  // --- PDF WIDGETS ---
-  pw.Widget _buildPdfHeader() {
-    return pw.Row(
-      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text("SHREE SHAKTI", style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
-            pw.Text("ELECTRIC SERVICE", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.blue700)),
-            pw.SizedBox(height: 4),
-            pw.Text("Specialist in: All types of Electric Fitting & Maintenance", style: pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic, color: PdfColors.grey700)),
-            pw.SizedBox(height: 10),
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text("Suresh K. Lakhadiya: +91 90336 60384", style: const pw.TextStyle(fontSize: 9, color: PdfColors.black)),
-                pw.Text("Hiren S. Lakhadiya:  +91 70160 55176", style: const pw.TextStyle(fontSize: 9, color: PdfColors.black)),
-              ],
-            ),
-          ],
-        ),
-        pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.end,
-          children: [
-            pw.Container(
-              padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: const pw.BoxDecoration(color: PdfColors.blue900, borderRadius: pw.BorderRadius.all(pw.Radius.circular(4))),
-              child: pw.Text("ESTIMATE / BILL", style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 12)),
-            ),
-            pw.SizedBox(height: 10),
-            pw.Text("Invoice No: $_billNumber", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
-            pw.Text("Date: ${_dateController.text}", style: const pw.TextStyle(fontSize: 10)),
-          ],
-        ),
-      ],
-    );
-  }
-
-  pw.Widget _buildPdfCustomerBox(String name, String phone) {
-    return pw.Container(
-      width: double.infinity,
-      padding: const pw.EdgeInsets.all(12),
-      decoration: const pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.all(pw.Radius.circular(8))),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text("BILL TO:", style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
-          pw.SizedBox(height: 4),
-          pw.Text(name, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 2),
-          pw.Text("Phone: $phone", style: const pw.TextStyle(fontSize: 10)),
-        ],
-      ),
-    );
-  }
-
-  pw.Widget _buildPdfTable() {
-    return pw.TableHelper.fromTextArray(
-      headers: ['SR.', 'DESCRIPTION', 'QTY', 'RATE', 'AMOUNT'],
-      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10),
-      headerDecoration: const pw.BoxDecoration(color: PdfColors.blue900),
-      cellHeight: 25,
-      border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-      data: List.generate(_items.length, (index) {
-        final item = _items[index];
-        double q = double.tryParse(item['qty'].text) ?? 0;
-        double p = double.tryParse(item['price'].text) ?? 0;
-        return [(index + 1).toString(), item['name'].text.toUpperCase(), q.toStringAsFixed(0), p.toStringAsFixed(2), (q * p).toStringAsFixed(2)];
-      }),
-    );
-  }
-
-  pw.Widget _buildPdfSummary() {
-    return pw.Row(
-      mainAxisAlignment: pw.MainAxisAlignment.end,
-      children: [
-        pw.Container(
-          width: 170,
-          decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300, width: 0.5)),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text("NET TOTAL", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
-              pw.Container(
-                padding: const pw.EdgeInsets.all(8),
-                color: PdfColors.blue50,
-                child: pw.Text("Rs. ${_total.toStringAsFixed(2)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11, color: PdfColors.blue900)),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  pw.Widget _buildPdfFooter(pw.MemoryImage sigImage) {
-    return pw.Row(
-      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: pw.CrossAxisAlignment.end,
-      children: [
-        pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text("Terms & Conditions:", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8, color: PdfColors.blue900)),
-            pw.SizedBox(height: 1),
-            pw.Text("1. Goods once sold will not be taken back.", style: const pw.TextStyle(fontSize: 7)),
-            pw.Text("2. This is a computer generated estimate.", style: const pw.TextStyle(fontSize: 7)),
-          ],
-        ),
-        pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.center,
-          mainAxisSize: pw.MainAxisSize.min,
-          children: [
-            pw.Transform.translate(offset: const PdfPoint(0, -15), child: pw.Text("For, SHREE SHAKTI ELECTRIC SERVICE", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7))),
-            pw.Transform.translate(
-              offset: const PdfPoint(0, -15),
-              child: pw.Container(width: 130, height: 50, child: pw.Image(sigImage, fit: pw.BoxFit.contain)),
-            ),
-            pw.SizedBox(width: 150, child: pw.Divider(thickness: 1.0, color: PdfColors.black)),
-            pw.Transform.translate(offset: const PdfPoint(0, 5), child: pw.Text("Authorized Signatory", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
-          ],
-        ),
-      ],
+  void _showSuccessDialog(File file, Uint8List pdfBytes) {
+    AppDialog.showInvoiceSuccessDialog(
+      context: context,
+      billNumber: _billNumber,
+      totalAmount: _subtotal,
+      pdfFile: file,
+      pdfBytes: pdfBytes,
+      isNewInvoice: false,
+      onFinish: () {
+        Navigator.of(context).pop(); // dismiss modal
+        Navigator.of(
+          context,
+        ).pop(true); // exit Edit page with true (triggers caller refresh)
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoadingItems) {
-      return Scaffold(
-        backgroundColor: lightBg,
-        body: const Center(child: CircularProgressIndicator()),
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(child: AppLoading(message: "Loading invoice details...")),
       );
     }
 
-    // Check state for footer visibility
-    bool isEditingItem = _items.any((item) => item['isEditable']);
-    bool shouldHideFooter = isEditingItem || _customerFocus.hasFocus || _phoneFocus.hasFocus;
-
-    // Professional Logic: Check if there is any data to protect
-    bool hasData = _items.isNotEmpty || _customerName.text.isNotEmpty;
-
     return PopScope(
-      canPop: false, // Stop immediate exit
-      onPopInvokedWithResult: (didPop, result) {
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-
-        // Trigger the professional red alert if data exists
-        if (hasData) {
-          _showBestExitAlert();
-        } else {
-          Navigator.pop(context); // Just exit if the invoice is empty
+        final shouldPop = await _handleAbandonCheck();
+        if (shouldPop && context.mounted) {
+          Navigator.of(context).pop();
         }
       },
       child: Scaffold(
-        backgroundColor: lightBg,
-        body: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            _buildAppBar(),
-            SliverToBoxAdapter(child: _buildCustomerCard()),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Row(
+        backgroundColor: AppColors.background,
+        drawer: const AppNavigationDrawer(),
+        appBar: _buildTopHeader(),
+        body: FadeTransition(
+          opacity: _fadeAnimation,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final bool isWideDesktop = constraints.maxWidth >= 940;
+
+              return AppResponsiveContainer(
+                maxWidth: 1100,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 16.0,
+                ),
+                child: isWideDesktop
+                    ? _buildDesktopLayout()
+                    : _buildMobileLayout(),
+              );
+            },
+          ),
+        ),
+        bottomNavigationBar: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 940) {
+              return _buildStickyBottomBar();
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildTopHeader() {
+    return AppBar(
+      elevation: 0,
+      scrolledUnderElevation: 1,
+      backgroundColor: AppColors.surface,
+      surfaceTintColor: Colors.transparent,
+      leading: IconButton(
+        icon: const Icon(
+          Icons.arrow_back_rounded,
+          color: AppColors.textPrimary,
+        ),
+        tooltip: "Cancel and Back",
+        onPressed: () async {
+          if (await _handleAbandonCheck()) {
+            if (mounted) Navigator.of(context).pop();
+          }
+        },
+      ),
+      titleSpacing: 0,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            "EDIT INVOICE",
+            style: AppTypography.headingSmall.copyWith(
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+              letterSpacing: 0.5,
+            ),
+          ),
+          Text(
+            "SHREE SHAKTI ELECTRIC • RECORD UPDATE",
+            style: AppTypography.labelCaps.copyWith(
+              fontSize: 9,
+              color: AppColors.primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 16.0),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.edit_note_rounded,
+                  size: 16,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _billNumber,
+                  style: AppTypography.labelMedium.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- DESKTOP 2-COLUMN LAYOUT ---
+  Widget _buildDesktopLayout() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Left Column: Customer Form & Line Items (Flex 7)
+        Expanded(
+          flex: 7,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildCustomerCard(),
+                AppSpacing.gapVl,
+                _buildQuickCatalogSection(),
+                AppSpacing.gapVl,
+                _buildLineItemsSection(isWide: true),
+                const SizedBox(height: 80),
+              ],
+            ),
+          ),
+        ),
+        AppSpacing.gapHxl,
+        // Right Column: Summary & Actions (Flex 4)
+        Expanded(
+          flex: 4,
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildInvoiceMetaCard(),
+                AppSpacing.gapVl,
+                _buildBillSummaryCard(),
+                AppSpacing.gapVl,
+                _buildDesktopActionsCard(),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- MOBILE / TABLET 1-COLUMN LAYOUT ---
+  Widget _buildMobileLayout() {
+    return SingleChildScrollView(
+      controller: _scrollController,
+      physics: const BouncingScrollPhysics(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildCustomerCard(),
+          AppSpacing.gapVl,
+          _buildQuickCatalogSection(),
+          AppSpacing.gapVl,
+          _buildLineItemsSection(isWide: false),
+          AppSpacing.gapVl,
+          _buildBillSummaryCard(),
+          const SizedBox(height: 120),
+        ],
+      ),
+    );
+  }
+
+  // --- CUSTOMER DETAILS CARD ---
+  Widget _buildCustomerCard() {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const AppSectionHeader(
+            title: "Customer & Invoice Info",
+            subtitle: "Update recipient details for this invoice",
+          ),
+          AppSpacing.gapVm,
+          AppTextField(
+            controller: _customerName,
+            focusNode: _customerFocus,
+            label: "Customer / Firm Name",
+            hint: "e.g. PATEL ELECTRICALS (defaults to CASH CUSTOMER)",
+            prefixIcon: Icons.person_rounded,
+            textCapitalization: TextCapitalization.characters,
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _phoneFocus.requestFocus(),
+            onChanged: (_) => setState(() {}),
+          ),
+          AppSpacing.gapVm,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final bool isWide = constraints.maxWidth >= 500;
+              final phoneField = AppTextField(
+                controller: _phoneNumber,
+                focusNode: _phoneFocus,
+                label: "Mobile Number",
+                hint: "e.g. 9876543210 (optional)",
+                prefixIcon: Icons.phone_android_rounded,
+                keyboardType: TextInputType.phone,
+                textInputAction: TextInputAction.next,
+                onSubmitted: (_) {
+                  if (_items.isNotEmpty) {
+                    (_items[0]['nameFocus'] as FocusNode?)?.requestFocus();
+                  }
+                },
+                onChanged: (_) => setState(() {}),
+              );
+
+              final dateField = AppTextField(
+                controller: _dateController,
+                readOnly: true,
+                label: "Invoice Date",
+                prefixIcon: Icons.calendar_today_rounded,
+                suffix: const Icon(
+                  Icons.arrow_drop_down_rounded,
+                  color: AppColors.textSecondary,
+                ),
+                onTap: () => _selectDate(context),
+              );
+
+              if (isWide) {
+                return Row(
                   children: [
-                    const Icon(Icons.list_alt_rounded, size: 18, color: Colors.blueGrey),
-                    const SizedBox(width: 8),
+                    Expanded(child: phoneField),
+                    AppSpacing.gapHm,
+                    Expanded(child: dateField),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [phoneField, AppSpacing.gapVm, dateField],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- QUICK CATALOG SUGGESTIONS ---
+  Widget _buildQuickCatalogSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.bolt_rounded,
+                size: 16,
+                color: AppColors.primary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                "QUICK INVENTORY CHIPS",
+                style: AppTypography.labelCaps.copyWith(
+                  fontSize: 11,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+        AppSpacing.gapVs,
+        SizedBox(
+          height: 38,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: _catalogSuggestions.length,
+            separatorBuilder: (context, _) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final item = _catalogSuggestions[index];
+              return ActionChip(
+                elevation: 0,
+                pressElevation: 1,
+                backgroundColor: AppColors.surface,
+                side: const BorderSide(color: AppColors.border, width: 1.0),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                avatar: const CircleAvatar(
+                  backgroundColor: AppColors.primarySoft,
+                  radius: 10,
+                  child: Icon(Icons.add, size: 12, color: AppColors.primary),
+                ),
+                label: Text(
+                  "${item['name']} (₹${item['price']})",
+                  style: AppTypography.bodySmall.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                onPressed: () =>
+                    _onSelectCatalogItem(item['name']!, item['price']!),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- LINE ITEMS SECTION ---
+  Widget _buildLineItemsSection({required bool isWide}) {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Expanded(
+                child: AppSectionHeader(
+                  title: "Billing Line Items",
+                  subtitle: "Products, spare parts, or services",
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceSubtle,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Text(
+                  "${_items.length} ${_items.length == 1 ? 'ITEM' : 'ITEMS'}",
+                  style: AppTypography.labelCaps.copyWith(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          AppSpacing.gapVm,
+          if (isWide) _buildDesktopTableHeader(),
+          AppSpacing.gapVs,
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _items.length,
+            separatorBuilder: (context, _) => AppSpacing.gapVs,
+            itemBuilder: (context, index) => _buildItemTile(index, isWide),
+          ),
+          AppSpacing.gapVm,
+          AppButton(
+            label: "ADD NEW LINE ITEM",
+            icon: Icons.add_rounded,
+            variant: AppButtonVariant.outline,
+            size: AppButtonSize.medium,
+            isFullWidth: true,
+            onPressed: () => _addNewItem(autoScroll: true, autoFocus: true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopTableHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSubtle,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 32,
+            child: Text("#", style: AppTypography.labelCaps),
+          ),
+          const SizedBox(width: 8),
+          const Expanded(
+            flex: 5,
+            child: Text("ITEM DESCRIPTION", style: AppTypography.labelCaps),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            flex: 2,
+            child: Text("QTY", style: AppTypography.labelCaps),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            flex: 2,
+            child: Text("RATE (₹)", style: AppTypography.labelCaps),
+          ),
+          const SizedBox(width: 12),
+          const SizedBox(
+            width: 110,
+            child: Text(
+              "AMOUNT (₹)",
+              textAlign: TextAlign.right,
+              style: AppTypography.labelCaps,
+            ),
+          ),
+          const SizedBox(width: 48),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemTile(int index, bool isWide) {
+    final item = _items[index];
+    final qty =
+        double.tryParse((item['qty'] as TextEditingController).text) ?? 0.0;
+    final price =
+        double.tryParse((item['price'] as TextEditingController).text) ?? 0.0;
+    final amount = qty * price;
+
+    if (isWide) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 32,
+              child: Text(
+                "${index + 1}",
+                style: AppTypography.labelMedium.copyWith(
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 5,
+              child: TextField(
+                controller: item['name'],
+                focusNode: item['nameFocus'] as FocusNode?,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                style: AppTypography.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                decoration: const InputDecoration(
+                  hintText: "Item name / description...",
+                  hintStyle: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 13,
+                  ),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                ),
+                onSubmitted: (_) =>
+                    (item['qtyFocus'] as FocusNode?)?.requestFocus(),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: TextField(
+                controller: item['qty'],
+                focusNode: item['qtyFocus'] as FocusNode?,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.next,
+                style: AppTypography.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                decoration: const InputDecoration(
+                  hintText: "1",
+                  border: OutlineInputBorder(
+                    borderSide: BorderSide(color: AppColors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                      color: AppColors.primary,
+                      width: 1.5,
+                    ),
+                  ),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                ),
+                onSubmitted: (_) =>
+                    (item['priceFocus'] as FocusNode?)?.requestFocus(),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: TextField(
+                controller: item['price'],
+                focusNode: item['priceFocus'] as FocusNode?,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.next,
+                style: AppTypography.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                decoration: const InputDecoration(
+                  hintText: "0",
+                  border: OutlineInputBorder(
+                    borderSide: BorderSide(color: AppColors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                      color: AppColors.primary,
+                      width: 1.5,
+                    ),
+                  ),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                ),
+                onSubmitted: (_) {
+                  if (index == _items.length - 1) {
+                    _addNewItem(autoScroll: true, autoFocus: true);
+                  } else {
+                    (_items[index + 1]['nameFocus'] as FocusNode?)
+                        ?.requestFocus();
+                  }
+                },
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 110,
+              child: Text(
+                CurrencyFormatter.format(amount),
+                textAlign: TextAlign.right,
+                style: AppTypography.labelLarge.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                color: AppColors.danger,
+                size: 20,
+              ),
+              tooltip: "Remove Item",
+              onPressed: () => _removeItem(index),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Responsive Mobile Card
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: AppColors.primarySoft,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Center(
+                  child: Text(
+                    "${index + 1}",
+                    style: AppTypography.labelMedium.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: item['name'],
+                  focusNode: item['nameFocus'] as FocusNode?,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
+                  style: AppTypography.bodyMedium.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: const InputDecoration(
+                    hintText: "Item description...",
+                    hintStyle: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                    ),
+                    border: InputBorder.none,
+                    isDense: true,
+                  ),
+                  onSubmitted: (_) =>
+                      (item['qtyFocus'] as FocusNode?)?.requestFocus(),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: AppColors.danger,
+                  size: 20,
+                ),
+                tooltip: "Remove Item",
+                onPressed: () => _removeItem(index),
+              ),
+            ],
+          ),
+          const Divider(height: 16, color: AppColors.border),
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: item['qty'],
+                  focusNode: item['qtyFocus'] as FocusNode?,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: "Qty",
+                    labelStyle: TextStyle(fontSize: 12),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                  ),
+                  onSubmitted: (_) =>
+                      (item['priceFocus'] as FocusNode?)?.requestFocus(),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 4,
+                child: TextField(
+                  controller: item['price'],
+                  focusNode: item['priceFocus'] as FocusNode?,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: "Rate (₹)",
+                    labelStyle: TextStyle(fontSize: 12),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                  ),
+                  onSubmitted: (_) {
+                    if (index == _items.length - 1) {
+                      _addNewItem(autoScroll: true, autoFocus: true);
+                    } else {
+                      (_items[index + 1]['nameFocus'] as FocusNode?)
+                          ?.requestFocus();
+                    }
+                  },
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "AMOUNT",
+                    style: AppTypography.labelCaps.copyWith(fontSize: 9),
+                  ),
+                  Text(
+                    CurrencyFormatter.format(amount),
+                    style: AppTypography.labelLarge.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- BILL METADATA CARD (DESKTOP) ---
+  Widget _buildInvoiceMetaCard() {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const AppSectionHeader(
+            title: "Invoice Identification",
+            subtitle: "Original system parameters preserved",
+          ),
+          AppSpacing.gapVs,
+          _metaRow("INVOICE NO.", _billNumber, isHighlight: true),
+          const Divider(height: 16, color: AppColors.border),
+          _metaRow("DATE", _dateController.text),
+          const Divider(height: 16, color: AppColors.border),
+          _metaRow(
+            "STATUS",
+            "Updating Existing Record",
+            badgeColor: AppColors.warning,
+          ),
+          const Divider(height: 16, color: AppColors.border),
+          _metaRow("DOC FORMAT", "GST Estimate / Bill (A4)"),
+        ],
+      ),
+    );
+  }
+
+  Widget _metaRow(
+    String label,
+    String value, {
+    bool isHighlight = false,
+    Color? badgeColor,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.labelCaps.copyWith(
+              fontSize: 10,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+        AppSpacing.gapHs,
+        if (badgeColor != null)
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: badgeColor.withAlpha(20),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.labelMedium.copyWith(
+                  color: badgeColor,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          )
+        else
+          Flexible(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: AppTypography.bodySmall.copyWith(
+                fontWeight: isHighlight ? FontWeight.w800 : FontWeight.w600,
+                color: isHighlight ? AppColors.primary : AppColors.textPrimary,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // --- BILL SUMMARY CARD ---
+  Widget _buildBillSummaryCard() {
+    return AppCard(
+      backgroundColor: AppColors.surface,
+      borderColor: AppColors.primary.withAlpha(50),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const AppSectionHeader(
+            title: "Updated Summary",
+            subtitle: "Live financial total & units",
+          ),
+          AppSpacing.gapVm,
+          _summaryRow("Total Line Items", "$_validItemsCount"),
+          AppSpacing.gapVs,
+          _summaryRow(
+            "Total Units / Quantity",
+            _totalQuantity.toStringAsFixed(0),
+          ),
+          AppSpacing.gapVs,
+          _summaryRow("Subtotal", CurrencyFormatter.format(_subtotal)),
+          const Divider(height: 24, color: AppColors.border),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      "BILLING ITEMS",
-                      style: TextStyle(
-                        color: navyBlue,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
-                        fontSize: 12,
+                      "NET PAYABLE",
+                      style: AppTypography.labelCaps.copyWith(
+                        color: AppColors.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
                       ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "Includes all goods & fitting",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.bodySmall.copyWith(fontSize: 10),
                     ),
                   ],
                 ),
               ),
-            ),
-            SliverToBoxAdapter(child: _buildQuickCatalogHeader()),
-            SliverPadding(
-              padding: const EdgeInsets.only(bottom: 20),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                      (context, index) => _buildItemTile(index),
-                  childCount: _items.length,
+              AppSpacing.gapHs,
+              AnimatedCountText(
+                value: _subtotal,
+                isCurrency: true,
+                style: AppTypography.currencyLarge.copyWith(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 22,
                 ),
               ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.textSecondary,
             ),
-            // Provides space so the list doesn't get hidden by the footer
-            const SliverToBoxAdapter(child: SizedBox(height: 180)),
-          ],
+          ),
         ),
-        bottomSheet: shouldHideFooter ? null : _buildModernFooter(),
+        AppSpacing.gapHs,
+        Flexible(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: AppTypography.bodyMedium.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- DESKTOP ACTIONS CARD ---
+  Widget _buildDesktopActionsCard() {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppButton(
+            label: "UPDATE & REGENERATE PDF",
+            icon: Icons.update_rounded,
+            variant: AppButtonVariant.primary,
+            size: AppButtonSize.large,
+            isLoading: _isUpdating,
+            onPressed: _isUpdating ? null : _processUpdate,
+          ),
+          AppSpacing.gapVm,
+          AppButton(
+            label: "CANCEL / DISCARD EDITS",
+            icon: Icons.close_rounded,
+            variant: AppButtonVariant.outline,
+            size: AppButtonSize.medium,
+            onPressed: () async {
+              if (await _handleAbandonCheck()) {
+                if (mounted) Navigator.of(context).pop();
+              }
+            },
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildAppBar() {
-    return SliverAppBar(
-      expandedHeight: 140.0,
-      pinned: true,
-      backgroundColor: royalBlue,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-        onPressed: () => Navigator.pop(context),
-      ),
-      flexibleSpace: FlexibleSpaceBar(
-        centerTitle: true,
-        title: const Text("EDIT INVOICE", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white, letterSpacing: 2)),
-        background: Container(
-          decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [royalBlue, navyBlue])),
-          child: Opacity(opacity: 0.1, child: const Icon(Icons.edit_document, size: 120, color: Colors.white)),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCustomerCard() {
+  // --- STICKY BOTTOM BAR (MOBILE / TABLET) ---
+  Widget _buildStickyBottomBar() {
     return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
       decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20)]
+        color: AppColors.surface,
+        border: const Border(top: BorderSide(color: AppColors.border)),
+        boxShadow: AppShadows.hover,
       ),
-      child: Column(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center, // Keep items aligned
-            children: [
-              Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: skyBlue.withOpacity(0.1), shape: BoxShape.circle),
-                  child: Icon(Icons.person, color: skyBlue, size: 20)
-              ),
-              const SizedBox(width: 15),
-
-              // --- CUSTOMER NAME INPUT WITH LIMIT ---
-              Expanded(
-                child: TextField(
-                  controller: _customerName,
-                  focusNode: _customerFocus,
-                  textCapitalization: TextCapitalization.characters,
-                  maxLength: 20, // Limits characters to prevent overlapping
-                  maxLines: 1,   // Ensures it stays on one line
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-                  decoration: InputDecoration(
-                    hintText: "Customer Name",
-                    border: InputBorder.none,
-                    counterText: "", // Hides the character counter for a clean look
-                  ),
-                ),
-              ),
-
-              const SizedBox(width: 10), // Small gap
-
-              // --- BILL NUMBER (Now stays visible) ---
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: lightBg,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                    _billNumber,
-                    style: TextStyle(color: royalBlue, fontWeight: FontWeight.bold, fontSize: 12)
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 40),
-          Row(
-            children: [
-              Expanded(child: _miniInput(Icons.phone_android, _phoneNumber, "Mobile No.", focus: _phoneFocus, isNum: true)),
-              Container(width: 1, height: 25, color: Colors.grey[200], margin: const EdgeInsets.symmetric(horizontal: 10)),
-              Expanded(child: InkWell(onTap: () => _selectDate(context), child: AbsorbPointer(child: _miniInput(Icons.calendar_month, _dateController, "Date")))),
-            ],
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildItemTile(int index) {
-    bool isEdit = _items[index]['isEditable'];
-    double qty = double.tryParse(_items[index]['qty'].text) ?? 0;
-    double price = double.tryParse(_items[index]['price'].text) ?? 0;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: isEdit ? royalBlue : Colors.transparent, width: 2)),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              CircleAvatar(backgroundColor: lightBg, radius: 15, child: Text("${index + 1}", style: TextStyle(fontSize: 12, color: royalBlue))),
-              const SizedBox(width: 12),
-              Expanded(child: TextField(controller: _items[index]['name'], enabled: isEdit, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(hintText: "Item name...", border: InputBorder.none))),
-              IconButton(onPressed: () => setState(() => _items[index]['isEditable'] = !isEdit), icon: Icon(isEdit ? Icons.check_circle : Icons.edit_rounded, color: isEdit ? Colors.green : royalBlue)),
-              if (!isEdit) IconButton(onPressed: () => setState(() => _items.removeAt(index)), icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent)),
-            ],
-          ),
-          if (isEdit) ...[
-            const Divider(),
-            Row(children: [_editBox("QTY", _items[index]['qty']), _editBox("RATE (₹)", _items[index]['price']), const Spacer(), Text("₹${(qty * price).toStringAsFixed(0)}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: royalBlue))])
-          ]
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModernFooter() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 34),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(top: Radius.circular(35)), boxShadow: [BoxShadow(color: royalBlue.withOpacity(0.1), blurRadius: 40)]),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        top: false,
+        child: Row(
           children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("TOTAL PAYABLE", style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: 11)), Text("₹${_total.toStringAsFixed(2)}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 32, color: navyBlue))]),
-            const SizedBox(height: 20),
-            Row(children: [
-              Expanded(child: OutlinedButton.icon(onPressed: () => _addNewItem(), icon: const Icon(Icons.add), label: const Text("ADD ITEM"), style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)), side: BorderSide(color: royalBlue, width: 2), foregroundColor: royalBlue))),
-              const SizedBox(width: 12),
-              Expanded(child: ElevatedButton.icon(onPressed: _items.isEmpty ? null : _processInvoice, icon: const Icon(Icons.update_rounded), label: const Text("UPDATE & SAVE"), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)), elevation: 5))),
-            ])
+            Expanded(
+              flex: 5,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "UPDATED TOTAL",
+                    style: AppTypography.labelCaps.copyWith(fontSize: 9),
+                  ),
+                  AnimatedCountText(
+                    value: _subtotal,
+                    isCurrency: true,
+                    style: AppTypography.headingMedium.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.primary,
+                      fontSize: 18,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            AppSpacing.gapHm,
+            Expanded(
+              flex: 6,
+              child: AppButton(
+                label: "UPDATE & SAVE",
+                icon: Icons.update_rounded,
+                variant: AppButtonVariant.primary,
+                size: AppButtonSize.medium,
+                isLoading: _isUpdating,
+                onPressed: _isUpdating ? null : _processUpdate,
+              ),
+            ),
           ],
         ),
       ),
     );
-  }
-
-  Widget _miniInput(IconData icon, TextEditingController ctrl, String hint, {FocusNode? focus, bool isNum = false}) {
-    return Row(children: [Icon(icon, size: 18, color: skyBlue), const SizedBox(width: 10), Expanded(child: TextField(controller: ctrl, focusNode: focus, keyboardType: isNum ? TextInputType.number : TextInputType.text, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textColor), decoration: InputDecoration(hintText: hint, border: InputBorder.none, hintStyle: TextStyle(color: Colors.grey[400]))))]);
-  }
-
-  Widget _editBox(String label, TextEditingController ctrl) {
-    return Container(width: 80, margin: const EdgeInsets.only(right: 15), child: TextField(controller: ctrl, keyboardType: TextInputType.number, onChanged: (v) => setState(() {}), style: const TextStyle(fontWeight: FontWeight.bold), decoration: InputDecoration(labelText: label, labelStyle: TextStyle(fontSize: 10, color: skyBlue))));
-  }
-
-  Widget _buildQuickCatalogHeader() {
-    final suggestions = [{"n": "Switch", "p": "45"}, {"n": "Socket", "p": "85"}, {"n": "LED 9W", "p": "120"}, {"n": "1.5mm Wire", "p": "1200"}];
-    return SizedBox(height: 50, child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.only(left: 16), itemCount: suggestions.length, itemBuilder: (context, i) => Padding(padding: const EdgeInsets.only(right: 8), child: ActionChip(label: Text(suggestions[i]['n']!), onPressed: () => _addNewItem(name: suggestions[i]['n']!, price: suggestions[i]['p']!), backgroundColor: Colors.white, labelStyle: TextStyle(color: royalBlue, fontWeight: FontWeight.bold), side: BorderSide(color: royalBlue.withOpacity(0.2))))));
-  }
-
-  void _showLoading(String message) {
-    showDialog(context: context, barrierDismissible: false, builder: (context) => AlertDialog(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), content: Column(mainAxisSize: MainAxisSize.min, children: [const SizedBox(height: 10), CircularProgressIndicator(color: royalBlue), const SizedBox(height: 25), Text(message, style: TextStyle(fontWeight: FontWeight.bold, color: navyBlue))])));
-  }
-
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime(2030), builder: (context, child) => Theme(data: Theme.of(context).copyWith(colorScheme: ColorScheme.light(primary: royalBlue)), child: child!));
-    if (picked != null) setState(() => _dateController.text = DateFormat('dd MMM yyyy').format(picked));
   }
 }

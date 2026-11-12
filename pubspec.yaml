@@ -41,6 +41,7 @@ dependencies:
   permission_handler: ^11.3.0
   loading_animation_widget: ^1.2.1
   shared_preferences: ^2.2.2
+  intl: ^0.20.2
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
@@ -49,6 +50,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  crypto: ^3.0.7
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -62,14 +64,24 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  uses-material-design: true
+
   assets:
     - assets/images/hiren.png
     - assets/images/suresh.png
+    - assets/icons/app_icon.png
+    - assets/icons/app_icon_foreground.png
+    - assets/icons/app_icon_background.png
 
-  # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
-  uses-material-design: true
+flutter_launcher_icons:
+  android: "ic_launcher"
+  image_path: "assets/icons/app_icon.png"
+  adaptive_icon_background: "assets/icons/app_icon_background.png"
+  adaptive_icon_foreground: "assets/icons/app_icon_foreground.png"
+  windows:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
+    icon_size: 256
 
   # To add assets to your application, add an assets section, like this:
   # assets:

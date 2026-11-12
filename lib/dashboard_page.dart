@@ -1,17 +1,21 @@
 import 'dart:io';
-import 'dart:ui';
-import 'package:bill/history_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'core/core.dart';
+import 'database_helper.dart';
 import 'login_page.dart';
 import 'create_invoice.dart';
-import 'database_helper.dart';
-import 'edit_invoice_page.dart'; // <-- ADDED THIS IMPORT
+import 'history_page.dart';
+import 'edit_invoice_page.dart';
 
+/// Premium Option D — Mobile Pro Dashboard for Shree Shakti Electric
+/// Deep Navy & Charcoal surfaces, Electric Blue primary actions,
+/// Amber highlights, smooth mobile bottom navigation & responsive desktop sidebar.
 class DashboardPage extends StatefulWidget {
   final String userName;
   const DashboardPage({super.key, required this.userName});
@@ -20,394 +24,126 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
-  List<Map<String, dynamic>> _allInvoices = [];
-  Map<String, dynamic> _stats = {'totalCount': 0, 'totalRev': 0.0};
+class _DashboardPageState extends State<DashboardPage>
+    with SingleTickerProviderStateMixin {
+  List<Map<String, dynamic>> _recentInvoices = [];
+  Map<String, dynamic> _metrics = {
+    'totalCount': 0,
+    'totalRev': 0.0,
+    'currentMonthRev': 0.0,
+    'customerCount': 0,
+  };
   bool _isLoading = true;
+  int _currentNavIndex = 0;
+
+  late final AnimationController _animController;
+  late final Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutCubic,
+    );
+
     _refreshData();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
   }
 
   Future<void> _refreshData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
+
     try {
-      final data = await DatabaseHelper.instance.getAllInvoices();
-      final statsData = await DatabaseHelper.instance.getInvoiceStats();
-      if (mounted) {
-        setState(() {
-          // Dashboard ONLY shows last 5
-          _allInvoices = data.take(5).toList();
-          _stats = statsData;
-          _isLoading = false;
-        });
-      }
+      final allData = await DatabaseHelper.instance.getAllInvoices();
+      final metricsData = await DatabaseHelper.instance.getDashboardMetrics();
+
+      if (!mounted) return;
+      setState(() {
+        _recentInvoices = allData.take(5).toList();
+        _metrics = metricsData;
+        _isLoading = false;
+      });
+
+      _animController.forward(from: 0.0);
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
     }
   }
 
-  // --- PREMIUM HEADER UPGRADE ---
-  Widget _buildPremiumHeader() {
-    String formatFullName(String name) {
-      if (name.isEmpty) return "Lakhadiya";
+  String _formatFullName(String name) {
+    if (name.isEmpty) return "Suresh Lakhadiya";
 
-      String capitalized = name.split(' ').map((str) {
-        if (str.isEmpty) return "";
-        return str[0].toUpperCase() + str.substring(1).toLowerCase();
-      }).join(' ');
+    final capitalized = name
+        .split(' ')
+        .map((str) {
+          if (str.isEmpty) return "";
+          return str[0].toUpperCase() + str.substring(1).toLowerCase();
+        })
+        .join(' ');
 
-      if (!capitalized.contains("Lakhadiya")) {
-        return "$capitalized Lakhadiya".trim();
-      }
-      return capitalized;
+    if (!capitalized.toLowerCase().contains("lakhadiya")) {
+      return "$capitalized Lakhadiya".trim();
     }
-
-    final String formattedName = formatFullName(widget.userName);
-
-    return SliverAppBar(
-      expandedHeight: 250,
-      pinned: true,
-      stretch: true,
-      elevation: 0,
-      backgroundColor: const Color(0xFF0F172A),
-      automaticallyImplyLeading: false,
-      title: const Text(
-        "SHREE SHAKTI",
-        style: TextStyle(
-          fontWeight: FontWeight.w900,
-          fontSize: 14,
-          letterSpacing: 3,
-          color: Colors.white,
-        ),
-      ),
-      centerTitle: true,
-      actions: [
-        Container(
-          margin: const EdgeInsets.only(right: 15),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: IconButton(
-            icon: const Icon(Icons.power_settings_new_rounded, color: Colors.redAccent, size: 20),
-            onPressed: _showLogoutDialog,
-          ),
-        )
-      ],
-      flexibleSpace: FlexibleSpaceBar(
-        stretchModes: const [
-          StretchMode.zoomBackground,
-          StretchMode.blurBackground,
-        ],
-        background: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF0F172A), Color(0xFF1E40AF), Color(0xFF1E1B4B)],
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const SizedBox(height: 40),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(24),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                          child: Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.2),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: LinearGradient(
-                                      colors: [Colors.blueAccent, Colors.cyanAccent],
-                                    ),
-                                  ),
-                                  padding: const EdgeInsets.all(2),
-                                  child: CircleAvatar(
-                                    radius: 30,
-                                    backgroundColor: const Color(0xFF0F172A),
-                                    child: Text(
-                                      formattedName.isNotEmpty ? formattedName[0] : "L",
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        "AUTHORIZED ADMIN",
-                                        style: TextStyle(
-                                          color: Colors.blueAccent.shade100,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 1.5,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        formattedName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 15),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.greenAccent.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(color: Colors.greenAccent.withOpacity(0.2)),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.gpp_good_rounded, color: Colors.greenAccent, size: 14),
-                            SizedBox(width: 8),
-                            Text(
-                              "SECURE SESSION ACTIVE",
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.2),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return capitalized;
   }
 
-  // --- STATS WIDGET ---
-  Widget _buildModernStats() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(25),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 15,
-                offset: const Offset(0, 5))
-          ]),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _statItem("TOTAL BILLS", _stats['totalCount'].toString(),
-              const Color(0xFF1E40AF)),
-          Container(width: 1, height: 30, color: Colors.grey[200]),
-          _statItem("REVENUE", "₹${_stats['totalRev'].toStringAsFixed(0)}",
-              const Color(0xFF10B981)),
-          Container(width: 1, height: 30, color: Colors.grey[200]),
-          _statItem("ACTIVE", "LIVE", const Color(0xFFF59E0B)),
-        ],
-      ),
-    );
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour >= 4 && hour < 12) {
+      return "Good morning";
+    } else if (hour >= 12 && hour < 17) {
+      return "Good afternoon";
+    } else {
+      return "Good evening";
+    }
   }
 
-  Widget _statItem(String label, String value, Color color) {
-    return Column(children: [
-      Text(value,
-          style: TextStyle(
-              fontSize: 18, fontWeight: FontWeight.w900, color: color)),
-      Text(label,
-          style: const TextStyle(
-              fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
-    ]);
-  }
+  // --- ACTIONS ---
 
-  // --- ACTION GRID ---
-  Widget _buildActionGrid() {
-    return Row(
-      children: [
-        _actionBtn("New Bill", Icons.add_rounded, const Color(0xFF2563EB), true, () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (c) => const CreateInvoicePage()),
-          ).then((_) => _refreshData());
-        }),
-        const SizedBox(width: 15),
-        _actionBtn("History", Icons.history_rounded, const Color(0xFF64748B), false, () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (c) => const HistoryPage()),
-          ).then((_) => _refreshData());
-        }),
-      ],
-    );
-  }
-
-  Widget _actionBtn(String title, IconData icon, Color color, bool isPrimary, VoidCallback onTap) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 22),
-          decoration: BoxDecoration(
-            color: isPrimary ? color : Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: isPrimary ? null : Border.all(color: Colors.grey.shade200, width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                color: color.withOpacity(0.15),
-                blurRadius: 12,
-                offset: const Offset(0, 6),
-              )
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: isPrimary ? Colors.white.withOpacity(0.2) : color.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: isPrimary ? Colors.white : color, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                title,
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 14,
-                  letterSpacing: 0.5,
-                  color: isPrimary ? Colors.white : Colors.black87,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // --- LIST ITEM CARD ---
-  Widget _buildAdvancedInvoiceCard(Map<String, dynamic> invoice) {
-    return GestureDetector(
-      onTap: () => _showInvoiceOptions(invoice),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.grey.shade100)),
-        child: Row(
-          children: [
-            Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                    color: const Color(0xFF1E40AF).withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.description_outlined,
-                    color: Color(0xFF1E40AF), size: 20)),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                      invoice['customerName']?.toString().toUpperCase() ??
-                          "CASH CUSTOMER",
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w900, fontSize: 13)),
-                  Text("INV #${invoice['billNumber']} • ${invoice['date']}",
-                      style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                ],
-              ),
-            ),
-            Text("₹${invoice['totalAmount']}",
-                style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 15,
-                    color: Color(0xFF1E40AF))),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // --- LOGIC FUNCTIONS ---
-  Future<void> _handleViewPdfOnly(Map<String, dynamic> invoice) async {
+  Future<void> _handleViewPdf(Map<String, dynamic> invoice) async {
     final String? path = invoice['pdfPath'];
     if (path == null || !await File(path).exists()) {
-      _showError("Document missing from local storage.");
+      _showErrorSnackbar("Invoice document not found in local storage.");
       return;
     }
+
     final bytes = await File(path).readAsBytes();
     if (!mounted) return;
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: const Color(0xFF0F172A),
+    await Navigator.of(context).push(
+      FadeSlidePageRoute(
+        page: Scaffold(
+          backgroundColor: AppColors.background,
           appBar: AppBar(
-            backgroundColor: Colors.white.withOpacity(0.05),
-            elevation: 0,
-            title: Text("PREVIEW: #${invoice['billNumber']}",
-                style: const TextStyle(fontSize: 14, color: Colors.white)),
+            backgroundColor: AppColors.surface,
+            title: Text(
+              "Invoice #${invoice['billNumber']}",
+              style: AppTypography.headingMedium,
+            ),
             centerTitle: true,
           ),
-          body: Container(
-            margin: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20), color: Colors.white),
+          body: AppResponsiveContainer(
+            padding: AppSpacing.screenPadding,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: PdfPreview(build: (format) => bytes, useActions: false),
+              borderRadius: AppRadius.l,
+              child: PdfPreview(
+                build: (format) => bytes,
+                useActions: true,
+                canChangeOrientation: false,
+                canChangePageFormat: false,
+              ),
             ),
           ),
         ),
@@ -416,132 +152,192 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _handleSharePdf(Map<String, dynamic> invoice) async {
-    final path = invoice['pdfPath'];
+    final String? path = invoice['pdfPath'];
     if (path != null && await File(path).exists()) {
-      await Share.shareXFiles([XFile(path)],
-          text: 'Invoice #${invoice['billNumber']}');
+      await Share.shareXFiles([
+        XFile(path),
+      ], text: 'Invoice #${invoice['billNumber']} from Shree Shakti Electric');
+    } else {
+      _showErrorSnackbar("Unable to share: PDF file is missing.");
     }
   }
 
-  void _confirmDelete(Map<String, dynamic> invoice) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Delete Record?"),
-        content: const Text("This action cannot be undone. Confirm?"),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("CANCEL")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () async {
-              await DatabaseHelper.instance.deleteInvoice(invoice['id']);
-              Navigator.pop(context);
-              _refreshData();
-            },
-            child: const Text("DELETE", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+  Future<void> _handleEditInvoice(Map<String, dynamic> invoice) async {
+    final bool? didUpdate = await Navigator.of(context).push<bool>(
+      FadeSlidePageRoute(page: EditInvoicePage(existingInvoice: invoice)),
     );
+
+    if (didUpdate == true) {
+      _refreshData();
+    }
   }
 
-  // --- UPDATED INVOICE OPTIONS WITH EDIT BUTTON ---
-  void _showInvoiceOptions(Map<String, dynamic> invoice) {
-    showModalBottomSheet(
+  Future<void> _handleDeleteInvoice(Map<String, dynamic> invoice) async {
+    final bool? confirm = await AppDialog.showDeleteInvoiceConfirmation(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => Container(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(35)),
-        ),
+      billNumber: invoice['billNumber']?.toString() ?? '',
+      customerName: invoice['customerName']?.toString(),
+    );
+
+    if (confirm == true) {
+      await DatabaseHelper.instance.deleteInvoice(invoice['id']);
+
+      final String? pdfPath = invoice['pdfPath'];
+      if (pdfPath != null) {
+        final file = File(pdfPath);
+        if (await file.exists()) {
+          try {
+            await file.delete();
+          } catch (_) {}
+        }
+      }
+
+      if (!mounted) return;
+      _refreshData();
+      AppNotification.showSuccess(
+        context,
+        "Invoice #${invoice['billNumber']} deleted permanently.",
+      );
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    final bool? confirm = await AppDialog.showLogoutConfirmation(
+      context: context,
+      userName: widget.userName,
+    );
+
+    if (confirm == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', false);
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        FadeSlidePageRoute(page: const LoginPage()),
+        (route) => false,
+      );
+    }
+  }
+
+  Future<void> _handleExitApp() async {
+    final bool? confirm = await AppDialog.showConfirmation(
+      context: context,
+      title: "Exit Application?",
+      message: "Are you sure you want to close Shree Shakti Electric Billing?",
+      confirmLabel: "EXIT",
+      cancelLabel: "STAY",
+      iconType: DialogIconType.info,
+    );
+
+    if (confirm == true) {
+      SystemNavigator.pop();
+    }
+  }
+
+  void _showErrorSnackbar(String message) {
+    if (!mounted) return;
+    AppNotification.showError(context, message);
+  }
+
+  void _showInvoiceOptions(Map<String, dynamic> invoice) {
+    AppDialog.showAppBottomSheet(
+      context: context,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(10))),
             Row(
               children: [
-                CircleAvatar(
-                    backgroundColor: const Color(0xFF1E40AF).withOpacity(0.1),
-                    child: const Icon(Icons.receipt_long_rounded,
-                        color: Color(0xFF1E40AF))),
-                const SizedBox(width: 15),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.primarySoft,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border, width: 1),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.receipt_long_rounded,
+                      color: AppColors.primaryLight,
+                      size: 24,
+                    ),
+                  ),
+                ),
+                AppSpacing.gapHm,
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(invoice['customerName'].toString().toUpperCase(),
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w900, fontSize: 15)),
-                      Text("Invoice #${invoice['billNumber']}",
-                          style:
-                          const TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text(
+                        invoice['customerName']?.toString().toUpperCase() ??
+                            "CASH CUSTOMER",
+                        style: AppTypography.headingSmall.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        "Invoice #${invoice['billNumber']} • ${invoice['date']}",
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded, color: Colors.black54),
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
-            const Divider(height: 30),
-
-            _buildActionTile(
-              icon: Icons.visibility_rounded,
-              title: "View Bill",
-              subtitle: "Open PDF Document",
-              color: const Color(0xFF2563EB),
-              onTap: () => _handleViewPdfOnly(invoice),
-            ),
-
-            // --- ADDED EDIT BUTTON HERE ---
-            _buildActionTile(
-              icon: Icons.edit_document,
-              title: "Edit Bill",
-              subtitle: "Modify items & regenerate PDF",
-              color: Colors.orange,
-              onTap: () async {
-                Navigator.pop(context); // Close bottom sheet
-                final bool? didUpdate = await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => EditInvoicePage(existingInvoice: invoice),
-                  ),
-                );
-                if (didUpdate == true) {
-                  _refreshData();
-                }
+            const Divider(height: 28),
+            _buildActionOptionTile(
+              icon: Icons.visibility_outlined,
+              title: "View Invoice PDF",
+              subtitle: "Open document viewer and printing preview",
+              color: AppColors.primaryLight,
+              onTap: () {
+                Navigator.of(context).pop();
+                _handleViewPdf(invoice);
               },
             ),
-
-            _buildActionTile(
-              icon: Icons.share_rounded,
-              title: "Share Bill",
-              subtitle: "Send via social apps",
-              color: const Color(0xFF10B981),
-              onTap: () => _handleSharePdf(invoice),
-            ),
-
-            _buildActionTile(
-              icon: Icons.delete_rounded,
-              title: "Delete Record",
-              subtitle: "Remove from storage",
-              color: const Color(0xFFEF4444),
+            _buildActionOptionTile(
+              icon: Icons.edit_outlined,
+              title: "Edit Invoice",
+              subtitle: "Modify billing items, quantities or rates",
+              color: AppColors.amberLight,
               onTap: () {
-                Navigator.pop(context);
-                _confirmDelete(invoice);
+                Navigator.of(context).pop();
+                _handleEditInvoice(invoice);
+              },
+            ),
+            _buildActionOptionTile(
+              icon: Icons.share_outlined,
+              title: "Share Invoice",
+              subtitle: "Send via WhatsApp, social apps or email",
+              color: AppColors.success,
+              onTap: () {
+                Navigator.of(context).pop();
+                _handleSharePdf(invoice);
+              },
+            ),
+            _buildActionOptionTile(
+              icon: Icons.delete_outline_rounded,
+              title: "Delete Record",
+              subtitle: "Permanently delete this invoice and PDF",
+              color: AppColors.danger,
+              onTap: () {
+                Navigator.of(context).pop();
+                _handleDeleteInvoice(invoice);
               },
             ),
           ],
@@ -550,241 +346,567 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildActionTile({
+  Widget _buildActionOptionTile({
     required IconData icon,
     required String title,
     required String subtitle,
     required Color color,
-    required VoidCallback onTap}) {
-    return ListTile(
-      onTap: onTap,
-      leading: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(15)),
-        child: Icon(icon, color: color, size: 22),
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: ListTile(
+        onTap: onTap,
+        shape: const RoundedRectangleBorder(borderRadius: AppRadius.m),
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color.withAlpha(30),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withAlpha(60), width: 1),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        title: Text(
+          title,
+          style: AppTypography.labelLarge.copyWith(
+            color: AppColors.textPrimary,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+        trailing: const Icon(
+          Icons.arrow_forward_ios_rounded,
+          size: 14,
+          color: AppColors.textMuted,
+        ),
       ),
-      title: Text(title,
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-      subtitle:
-      Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-      trailing: const Icon(Icons.arrow_forward_ios_rounded,
-          size: 14, color: Colors.grey),
     );
   }
 
-  void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(msg),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: Colors.redAccent));
+  void _showManagerProfileSheet(String managerName) {
+    AppDialog.showAppBottomSheet(
+      context: context,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: AppColors.primary,
+                  child: Text(
+                    managerName.isNotEmpty ? managerName[0].toUpperCase() : "M",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(managerName, style: AppTypography.headingMedium),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: AppColors.success,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            "Authorized Terminal Manager",
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.primaryLight,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 32),
+            ListTile(
+              leading: const Icon(
+                Icons.verified_user_outlined,
+                color: AppColors.primaryLight,
+              ),
+              title: const Text("Manager Account"),
+              subtitle: Text(
+                widget.userName.toLowerCase(),
+                style: AppTypography.bodySmall,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.storage_rounded,
+                color: AppColors.amberLight,
+              ),
+              title: const Text("SQLite Database"),
+              subtitle: const Text(
+                "shree_shakti.db • Schema v3",
+                style: AppTypography.bodySmall,
+              ),
+            ),
+            const SizedBox(height: 16),
+            AppButton(
+              label: "SIGN OUT",
+              icon: Icons.logout_rounded,
+              variant: AppButtonVariant.danger,
+              onPressed: () {
+                Navigator.of(context).pop();
+                _handleLogout();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  void _showLogoutDialog() {
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: "Logout",
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (ctx, a1, a2) => Container(),
-      transitionBuilder: (ctx, a1, a2, child) {
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8 * a1.value, sigmaY: 8 * a1.value),
-          child: FadeTransition(
-            opacity: a1,
-            child: ScaleTransition(
-              scale: a1,
-              child: AlertDialog(
-                backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-                contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
+  // --- UI BUILD METHOD ---
+
+  @override
+  Widget build(BuildContext context) {
+    final String formattedManager = _formatFullName(widget.userName);
+    final String todayDate = DateFormat(
+      'EEEE, d MMMM yyyy',
+    ).format(DateTime.now());
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bool isDesktop = screenWidth >= 900;
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleExitApp();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: _buildTopHeader(formattedManager),
+        drawer: AppNavigationDrawer(
+          currentRoute: '/dashboard',
+          managerName: widget.userName,
+          onRefreshParent: _refreshData,
+        ),
+        body: isDesktop
+            ? Row(
+                children: [
+                  _buildDesktopSidebar(formattedManager),
+                  Expanded(
+                    child: _buildMainDashboardContent(
+                      formattedManager,
+                      todayDate,
+                    ),
+                  ),
+                ],
+              )
+            : _buildMainDashboardContent(formattedManager, todayDate),
+        bottomNavigationBar: null,
+      ),
+    );
+  }
+
+  Widget _buildDesktopSidebar(String managerName) {
+    return Container(
+      width: 250,
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(right: BorderSide(color: AppColors.border, width: 1)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Logo
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: AppShadows.primaryGlow,
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.electric_bolt_rounded,
+                    color: AppColors.amberLight,
+                    size: 22,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 32),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      "Sign Out",
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 22,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
                     Text(
-                      "Are you sure you want to end your secure session?",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
+                      "SHREE SHAKTI",
+                      style: AppTypography.headingSmall.copyWith(
+                        fontWeight: FontWeight.w900,
                         fontSize: 14,
-                        fontWeight: FontWeight.w500,
+                        letterSpacing: 1.2,
+                        color: AppColors.textPrimary,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 25),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 15),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
-                            child: Text(
-                              "CANCEL",
-                              style: TextStyle(
-                                color: Colors.grey.shade500,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.1,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              final prefs = await SharedPreferences.getInstance();
-                              await prefs.setBool('isLoggedIn', false);
-                              if (!mounted) return;
-                              Navigator.pushAndRemoveUntil(
-                                context,
-                                MaterialPageRoute(builder: (c) => const LoginPage()),
-                                    (route) => false,
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0F172A),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 15),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
-                            child: const Text(
-                              "LOGOUT",
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.1,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      "COMMERCIAL MANAGEMENT SUITE",
+                      style: AppTypography.labelCaps.copyWith(
+                        fontSize: 8.5,
+                        color: AppColors.primaryLight,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ],
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 32),
+          Text(
+            "MAIN NAVIGATION",
+            style: AppTypography.labelCaps.copyWith(
+              fontSize: 9.5,
+              color: AppColors.textMuted,
             ),
           ),
-        );
-      },
+          const SizedBox(height: 12),
+          _buildSidebarNavItem(
+            icon: Icons.dashboard_rounded,
+            label: "Dashboard",
+            isActive: _currentNavIndex == 0,
+            onTap: () => setState(() => _currentNavIndex = 0),
+          ),
+          _buildSidebarNavItem(
+            icon: Icons.add_circle_outline_rounded,
+            label: "Create Bill",
+            isActive: false,
+            highlightBadge: "NEW",
+            onTap: () {
+              Navigator.of(context)
+                  .push(FadeSlidePageRoute(page: const CreateInvoicePage()))
+                  .then((_) => _refreshData());
+            },
+          ),
+          _buildSidebarNavItem(
+            icon: Icons.receipt_long_rounded,
+            label: "Invoice History",
+            isActive: false,
+            onTap: () {
+              Navigator.of(context)
+                  .push(FadeSlidePageRoute(page: const HistoryPage()))
+                  .then((_) => _refreshData());
+            },
+          ),
+          const Spacer(),
+          // Manager Profile in Sidebar
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceSubtle,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border, width: 1),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: AppColors.primary,
+                  child: Text(
+                    managerName.isNotEmpty ? managerName[0].toUpperCase() : "M",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        managerName.split(' ')[0],
+                        style: AppTypography.labelMedium.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        "Partner",
+                        style: AppTypography.bodySmall.copyWith(
+                          fontSize: 11,
+                          color: AppColors.primaryLight,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.power_settings_new_rounded,
+                    color: AppColors.danger,
+                    size: 18,
+                  ),
+                  tooltip: "Sign Out",
+                  onPressed: _handleLogout,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  void _showBestExitAlert() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+  Widget _buildSidebarNavItem({
+    required IconData icon,
+    required String label,
+    required bool isActive,
+    String? highlightBadge,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6.0),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(30, 12, 30, 40),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
-            boxShadow: [
-              BoxShadow(color: Colors.black12, blurRadius: 20, spreadRadius: 5),
-            ],
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: isActive ? AppColors.primarySoft : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isActive
+                  ? AppColors.primaryLight.withAlpha(100)
+                  : Colors.transparent,
+              width: 1,
+            ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: Row(
             children: [
-              Container(
-                width: 40,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(10),
+              Icon(
+                icon,
+                size: 20,
+                color: isActive
+                    ? AppColors.primaryLight
+                    : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: AppTypography.labelMedium.copyWith(
+                    color: isActive
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary,
+                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                  ),
                 ),
               ),
-              const SizedBox(height: 30),
-              Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.power_settings_new_rounded,
-                    color: Colors.orange, size: 35),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                "Exit Application?",
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF0F172A),
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                "Are you sure you want to close the app? Any unsaved progress may be lost.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey.shade500,
-                  fontSize: 14,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 35),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        side: BorderSide(color: Colors.grey.shade200),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                      ),
-                      child: Text(
-                        "STAY",
-                        style: TextStyle(
-                          color: Colors.grey.shade700,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
+              if (highlightBadge != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.amberSoft,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.amberBorder, width: 1),
+                  ),
+                  child: Text(
+                    highlightBadge,
+                    style: const TextStyle(
+                      color: AppColors.amberLight,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => SystemNavigator.pop(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F172A),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                      ),
-                      child: const Text(
-                        "CLOSE APP",
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
-                        ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMainDashboardContent(String formattedManager, String todayDate) {
+    return RefreshIndicator(
+      onRefresh: _refreshData,
+      color: AppColors.primaryLight,
+      backgroundColor: AppColors.surface,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        child: AppResponsiveContainer(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildWelcomeBanner(formattedManager, todayDate),
+                AppSpacing.gapVxxl,
+                _buildStatisticsGrid(),
+                AppSpacing.gapVm,
+                _buildSecondaryAnalyticsStrip(),
+                AppSpacing.gapVxxl,
+                _buildQuickActionCards(),
+                AppSpacing.gapVxxl,
+                _buildRecentInvoicesSection(),
+                AppSpacing.gapVxxxl,
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildTopHeader(String managerName) {
+    return AppBar(
+      elevation: 0,
+      scrolledUnderElevation: 1,
+      backgroundColor: AppColors.surface,
+      surfaceTintColor: Colors.transparent,
+      titleSpacing: 16,
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border, width: 1.0),
+              boxShadow: AppShadows.primaryGlow,
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.electric_bolt_rounded,
+                color: AppColors.amberLight,
+                size: 20,
+              ),
+            ),
+          ),
+          AppSpacing.gapHs,
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "SHREE SHAKTI ELECTRIC",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.headingSmall.copyWith(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  "BILLING & ESTIMATION SUITE",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.labelCaps.copyWith(
+                    fontSize: 9,
+                    color: AppColors.primaryLight,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(
+            Icons.logout_rounded,
+            color: AppColors.danger,
+            size: 20,
+          ),
+          tooltip: "Sign Out",
+          onPressed: _handleLogout,
+        ),
+        const SizedBox(width: 8),
+      ],
+    );
+  }
+
+  Widget _buildWelcomeBanner(String managerName, String todayDate) {
+    final String greeting = _getGreeting();
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "$greeting, ${managerName.split(' ')[0]} 👋",
+                style: AppTypography.displayMedium.copyWith(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              AppSpacing.gapVxxs,
+              Row(
+                children: [
+                  const Icon(
+                    Icons.calendar_today_outlined,
+                    size: 13,
+                    color: AppColors.amberLight,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      todayDate,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -793,101 +915,640 @@ class _DashboardPageState extends State<DashboardPage> {
             ],
           ),
         ),
+        InkWell(
+          onTap: () => _showManagerProfileSheet(managerName),
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.primary.withAlpha(50)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(
+                  radius: 12,
+                  backgroundColor: AppColors.primary,
+                  child: Text(
+                    managerName.isNotEmpty ? managerName[0].toUpperCase() : "M",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  managerName.split(' ')[0],
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatisticsGrid() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isWideDesktop = constraints.maxWidth >= 880;
+        final bool isTabletOrNarrow =
+            constraints.maxWidth >= 540 && !isWideDesktop;
+
+        final card1 = AppStatCard(
+          title: "Total Invoices",
+          value: _metrics['totalCount'],
+          icon: Icons.receipt_long_rounded,
+          iconColor: AppColors.primary,
+          iconBgColor: AppColors.primarySoft,
+          badgeText: "ALL TIME",
+          badgeColor: AppColors.primary,
+          badgeBgColor: AppColors.primarySoft,
+        );
+
+        final card2 = AppStatCard(
+          title: "Total Revenue",
+          value: _metrics['totalRev'],
+          isCurrency: true,
+          icon: Icons.account_balance_wallet_rounded,
+          iconColor: AppColors.emeraldGreen,
+          iconBgColor: AppColors.emeraldSoft,
+          badgeText: "LIFETIME",
+          badgeColor: AppColors.emeraldGreen,
+          badgeBgColor: AppColors.emeraldSoft,
+        );
+
+        final card3 = AppStatCard(
+          title: "Total Customers",
+          value: _metrics['customerCount'],
+          icon: Icons.people_alt_rounded,
+          iconColor: AppColors.premiumViolet,
+          iconBgColor: AppColors.violetSoft,
+          badgeText: "ACTIVE",
+          badgeColor: AppColors.premiumViolet,
+          badgeBgColor: AppColors.violetSoft,
+        );
+
+        final card4 = AppStatCard(
+          title: "Recent Bills",
+          value: _recentInvoices.length,
+          icon: Icons.history_edu_rounded,
+          iconColor: AppColors.warmAmber,
+          iconBgColor: AppColors.amberSoft,
+          badgeText: "RECENT",
+          badgeColor: AppColors.warmAmber,
+          badgeBgColor: AppColors.amberSoft,
+        );
+
+        if (isWideDesktop) {
+          return Row(
+            children: [
+              Expanded(child: card1),
+              AppSpacing.gapHm,
+              Expanded(child: card2),
+              AppSpacing.gapHm,
+              Expanded(child: card3),
+              AppSpacing.gapHm,
+              Expanded(child: card4),
+            ],
+          );
+        }
+
+        if (isTabletOrNarrow) {
+          return Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(child: card1),
+                  AppSpacing.gapHm,
+                  Expanded(child: card2),
+                ],
+              ),
+              AppSpacing.gapVm,
+              Row(
+                children: [
+                  Expanded(child: card3),
+                  AppSpacing.gapHm,
+                  Expanded(child: card4),
+                ],
+              ),
+            ],
+          );
+        }
+
+        // Mobile 2x2 Grid
+        return Column(
+          children: [
+            Row(
+              children: [
+                Expanded(child: card1),
+                AppSpacing.gapHm,
+                Expanded(child: card2),
+              ],
+            ),
+            AppSpacing.gapVm,
+            Row(
+              children: [
+                Expanded(child: card3),
+                AppSpacing.gapHm,
+                Expanded(child: card4),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSecondaryAnalyticsStrip() {
+    final currentMonthLabel = DateFormat('MMMM yyyy').format(DateTime.now());
+    final double monthRev =
+        (_metrics['currentMonthRev'] as num?)?.toDouble() ?? 0.0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppShadows.card,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: AppColors.electricSoft,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.electricBorder.withAlpha(80)),
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.calendar_month_rounded,
+                color: AppColors.electricBlue,
+                size: 20,
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "MONTHLY PERFORMANCE ($currentMonthLabel)",
+                  style: AppTypography.labelCaps.copyWith(
+                    fontSize: 10,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "Recorded Month Revenue: ${CurrencyFormatter.format(monthRev)}",
+                  style: AppTypography.bodyMedium.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.primaryLight.withAlpha(50)),
+            ),
+            child: Text(
+              "Current Cycle",
+              style: AppTypography.labelCaps.copyWith(
+                fontSize: 9.5,
+                color: AppColors.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return const SliverFillRemaining(
-        child: Center(
-            child:
-            Text("No records yet.", style: TextStyle(color: Colors.grey))));
-  }
+  Widget _buildQuickActionCards() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isHorizontal = constraints.maxWidth >= 720;
 
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        _showBestExitAlert();
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
-        body: RefreshIndicator(
-          onRefresh: _refreshData,
-          child: CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              _buildPremiumHeader(),
-              SliverToBoxAdapter(
-                  child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: _buildModernStats())),
-              SliverToBoxAdapter(
-                  child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: _buildActionGrid())),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(25, 25, 25, 10),
-                sliver: SliverToBoxAdapter(
-                  child: Row(
-                    children: [
-                      Container(
-                          width: 4,
-                          height: 16,
+        final newBillCard = AppCard(
+          backgroundColor: AppColors.surface,
+          borderColor: AppColors.primaryLight.withAlpha(90),
+          padding: const EdgeInsets.all(18),
+          onTap: () {
+            Navigator.of(context)
+                .push(FadeSlidePageRoute(page: const CreateInvoicePage()))
+                .then((_) => _refreshData());
+          },
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: AppShadows.primaryGlow,
+                ),
+                child: const Icon(
+                  Icons.add_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              AppSpacing.gapHm,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            "Create New Bill",
+                            style: AppTypography.headingSmall.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
-                              color: const Color(0xFF1E40AF),
-                              borderRadius: BorderRadius.circular(10))),
-                      const SizedBox(width: 10),
-                      const Text("LATEST 5 BILLS",
-                          style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF475569),
-                              fontSize: 11,
-                              letterSpacing: 1.2)),
-                      const Spacer(),
-
-                      // --- VIEW ALL BUTTON WIRED UP HERE ---
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (c) => const HistoryPage()),
-                          ).then((_) => _refreshData());
-                        },
-                        child: const Text("VIEW ALL",
+                            color: AppColors.amberSoft,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: AppColors.amberBorder,
+                              width: 1,
+                            ),
+                          ),
+                          child: const Text(
+                            "FAST ENTRY",
                             style: TextStyle(
-                                color: Color(0xFF2563EB),
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold)),
-                      )
-                    ],
-                  ),
+                              color: AppColors.amberAccent,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "Multi-step billing wizard & PDF print",
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
-              _isLoading
-                  ? const SliverToBoxAdapter(
-                  child: Center(
-                      child: Padding(
-                          padding: EdgeInsets.all(80),
-                          child: CircularProgressIndicator())))
-                  : _allInvoices.isEmpty
-                  ? _buildEmptyState()
-                  : SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                        (context, index) =>
-                        _buildAdvancedInvoiceCard(_allInvoices[index]),
-                    childCount: _allInvoices.length,
-                  ),
-                ),
+              const Icon(
+                Icons.arrow_forward_rounded,
+                color: AppColors.primary,
+                size: 20,
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 50)),
             ],
           ),
+        );
+
+        final viewBillsCard = AppCard(
+          backgroundColor: AppColors.surface,
+          padding: const EdgeInsets.all(18),
+          onTap: () {
+            Navigator.of(context)
+                .push(FadeSlidePageRoute(page: const HistoryPage()))
+                .then((_) => _refreshData());
+          },
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.emeraldSoft,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.emeraldBorder.withAlpha(80),
+                    width: 1,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.receipt_long_rounded,
+                  color: AppColors.emeraldGreen,
+                  size: 24,
+                ),
+              ),
+              AppSpacing.gapHm,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "View All Bills",
+                      style: AppTypography.headingSmall.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "Complete ledger & history",
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_rounded,
+                color: AppColors.textMuted,
+                size: 18,
+              ),
+            ],
+          ),
+        );
+
+        final searchInvoiceCard = AppCard(
+          backgroundColor: AppColors.surface,
+          padding: const EdgeInsets.all(18),
+          onTap: () {
+            Navigator.of(context)
+                .push(
+                  FadeSlidePageRoute(
+                    page: const HistoryPage(autoFocusSearch: true),
+                  ),
+                )
+                .then((_) => _refreshData());
+          },
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.violetSoft,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.violetBorder.withAlpha(80),
+                    width: 1,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.search_rounded,
+                  color: AppColors.premiumViolet,
+                  size: 24,
+                ),
+              ),
+              AppSpacing.gapHm,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Search Invoice",
+                      style: AppTypography.headingSmall.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "Find by number or customer",
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_rounded,
+                color: AppColors.textMuted,
+                size: 18,
+              ),
+            ],
+          ),
+        );
+
+        return Column(
+          children: [
+            newBillCard,
+            AppSpacing.gapVm,
+            if (isHorizontal)
+              Row(
+                children: [
+                  Expanded(child: viewBillsCard),
+                  AppSpacing.gapHm,
+                  Expanded(child: searchInvoiceCard),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  Expanded(child: viewBillsCard),
+                  AppSpacing.gapHm,
+                  Expanded(child: searchInvoiceCard),
+                ],
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildRecentInvoicesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppSectionHeader(
+          title: "Recent Invoices",
+          subtitle: "Latest 5 bills recorded in the system",
+          actionLabel: "VIEW ALL",
+          onAction: () {
+            Navigator.of(context)
+                .push(FadeSlidePageRoute(page: const HistoryPage()))
+                .then((_) => _refreshData());
+          },
         ),
+        AppSpacing.gapVs,
+        if (_isLoading) ...[
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40.0),
+            child: AppLoading(message: "Loading invoice ledger..."),
+          ),
+        ] else if (_recentInvoices.isEmpty) ...[
+          AppEmptyState(
+            icon: Icons.receipt_long_outlined,
+            title: "No Invoices Yet",
+            message:
+                "You haven't recorded any invoices yet. Create your first bill to start tracking transactions.",
+            actionLabel: "CREATE FIRST BILL",
+            onAction: () {
+              Navigator.of(context)
+                  .push(FadeSlidePageRoute(page: const CreateInvoicePage()))
+                  .then((_) => _refreshData());
+            },
+          ),
+        ] else ...[
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _recentInvoices.length,
+            separatorBuilder: (context, index) => AppSpacing.gapVs,
+            itemBuilder: (context, index) {
+              return _buildInvoiceCard(_recentInvoices[index]);
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildInvoiceCard(Map<String, dynamic> invoice) {
+    final customerName =
+        invoice['customerName']?.toString().toUpperCase() ?? "CASH CUSTOMER";
+    final billNumber = invoice['billNumber']?.toString() ?? "";
+    final date = invoice['date']?.toString() ?? "";
+    final amount = (invoice['totalAmount'] as num?)?.toDouble() ?? 0.0;
+
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 14.0),
+      onTap: () => _showInvoiceOptions(invoice),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border, width: 1),
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.description_outlined,
+                color: AppColors.primaryLight,
+                size: 20,
+              ),
+            ),
+          ),
+          AppSpacing.gapHm,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  customerName,
+                  style: AppTypography.headingSmall.copyWith(
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 3),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceSubtle,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppColors.border, width: 1),
+                      ),
+                      child: Text(
+                        "#$billNumber",
+                        style: AppTypography.labelCaps.copyWith(
+                          fontSize: 10,
+                          color: AppColors.primaryLight,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      date,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          AppSpacing.gapHs,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                CurrencyFormatter.format(amount),
+                style: AppTypography.currencyMedium.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+              const SizedBox(height: 2),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textMuted,
+                size: 18,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
